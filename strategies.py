@@ -5,13 +5,16 @@ from enum import Enum
 
 class Signal(Enum):
     HOLD = 0
-    BUY = 1
-    SELL = -1
+    LONG_ENTRY = 1
+    LONG_EXIT = 2
+    SHORT_ENTRY = -1
+    SHORT_EXIT = -2
 
 class BaseStrategy(ABC):
     def __init__(self, name: str):
         self.name = name
         self.signals = None
+        self.current_position = 0  # 0: no position, 1: long, -1: short
     
     @abstractmethod
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -50,15 +53,29 @@ class MovingAverageCrossover(BaseStrategy):
         
         # Generate signals
         df['Signal'] = Signal.HOLD.value
+        df['Position'] = 0
         
-        # Buy signal: short MA crosses above long MA
-        df.loc[df['SMA_short'] > df['SMA_long'], 'Signal'] = Signal.BUY.value
+        # Initialize position tracking
+        current_position = 0
         
-        # Sell signal: short MA crosses below long MA
-        df.loc[df['SMA_short'] < df['SMA_long'], 'Signal'] = Signal.SELL.value
-        
-        # Only generate signals when both MAs are available
-        df.loc[df['SMA_short'].isna() | df['SMA_long'].isna(), 'Signal'] = Signal.HOLD.value
+        for i in range(1, len(df)):
+            prev_short = df['SMA_short'].iloc[i-1]
+            prev_long = df['SMA_long'].iloc[i-1]
+            curr_short = df['SMA_short'].iloc[i]
+            curr_long = df['SMA_long'].iloc[i]
+            
+            # Check for crossover
+            if prev_short <= prev_long and curr_short > curr_long:
+                if current_position <= 0:  # Only enter if not already long
+                    df.loc[df.index[i], 'Signal'] = Signal.LONG_ENTRY.value
+                    current_position = 1
+            elif prev_short >= prev_long and curr_short < curr_long:
+                if current_position >= 0:  # Only enter if not already short
+                    df.loc[df.index[i], 'Signal'] = Signal.SHORT_ENTRY.value
+                    current_position = -1
+            
+            # Update position
+            df.loc[df.index[i], 'Position'] = current_position
         
         return df
 
@@ -90,11 +107,27 @@ class RSIStrategy(BaseStrategy):
         
         # Generate signals
         df['Signal'] = Signal.HOLD.value
+        df['Position'] = 0
         
-        # Buy signal: RSI crosses below oversold
-        df.loc[df['RSI'] < self.oversold, 'Signal'] = Signal.BUY.value
+        # Initialize position tracking
+        current_position = 0
         
-        # Sell signal: RSI crosses above overbought
-        df.loc[df['RSI'] > self.overbought, 'Signal'] = Signal.SELL.value
+        for i in range(1, len(df)):
+            prev_rsi = df['RSI'].iloc[i-1]
+            curr_rsi = df['RSI'].iloc[i]
+            
+            # Check for oversold condition (potential long entry)
+            if prev_rsi > self.oversold and curr_rsi <= self.oversold:
+                if current_position <= 0:  # Only enter if not already long
+                    df.loc[df.index[i], 'Signal'] = Signal.LONG_ENTRY.value
+                    current_position = 1
+            # Check for overbought condition (potential short entry)
+            elif prev_rsi < self.overbought and curr_rsi >= self.overbought:
+                if current_position >= 0:  # Only enter if not already short
+                    df.loc[df.index[i], 'Signal'] = Signal.SHORT_ENTRY.value
+                    current_position = -1
+            
+            # Update position
+            df.loc[df.index[i], 'Position'] = current_position
         
         return df 
