@@ -8,13 +8,14 @@ class Visualizer:
     def __init__(self):
         self.fig = None
     
-    def create_chart(self, data: pd.DataFrame, strategies: List[BaseStrategy]) -> go.Figure:
+    def create_chart(self, data: pd.DataFrame, strategies: List[BaseStrategy], signals_data: Dict[str, pd.DataFrame] = None) -> go.Figure:
         """
         Create an interactive chart with OHLC data and strategy signals
         
         Args:
             data (pd.DataFrame): OHLCV data with signals
             strategies (List[BaseStrategy]): List of strategy objects
+            signals_data (Dict[str, pd.DataFrame]): Pre-generated signals data for each strategy
             
         Returns:
             go.Figure: Plotly figure object
@@ -106,7 +107,11 @@ class Visualizer:
         colors = ['red', 'green', 'blue', 'purple', 'orange']
         
         for i, strategy in enumerate(strategies):
-            strategy_data = strategy.generate_signals(data)
+            # Use pre-generated signals data if available, otherwise generate signals
+            if signals_data and strategy.name in signals_data:
+                strategy_data = signals_data[strategy.name]
+            else:
+                strategy_data = strategy.generate_signals(data)
             
             # Plot buy signals
             buy_signals = strategy_data[strategy_data['Signal'] == 1]
