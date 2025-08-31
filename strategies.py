@@ -14,11 +14,15 @@ class Trade:
     entry_price: float
     exit_date: pd.Timestamp = None
     exit_price: float = None
-    position_type: int = 0  # 1 for long, -1 for short
+    position_type: 'PositionType' = None  # Will be set to PositionType.NONE by default
     take_profit: float = None
     stop_loss: float = None
     pnl: float = 0
     status: str = "open"  # "open", "closed", "tp_hit", "sl_hit"
+    
+    def __post_init__(self):
+        if self.position_type is None:
+            self.position_type = PositionType.NONE
 
 class Signal(Enum):
     HOLD = 0
@@ -26,6 +30,11 @@ class Signal(Enum):
     LONG_EXIT = 2
     SHORT_ENTRY = -1
     SHORT_EXIT = -2
+
+class PositionType(Enum):
+    NONE = 0
+    LONG = 1
+    SHORT = -1
 
 class BaseStrategy(ABC):
     def __init__(self, name: str, risk_reward_ratio: float = 2.0, atr_period: int = 14, trading_fee: float = 0.0):
@@ -44,7 +53,7 @@ class BaseStrategy(ABC):
         
         self.name = name
         self.signals = None
-        self.current_position = 0  # 0: no position, 1: long, -1: short
+        self.current_position = PositionType.NONE  # No position, LONG, or SHORT
         self.risk_reward_ratio = risk_reward_ratio
         self.atr_period = atr_period
         self.trading_fee = trading_fee  # Trading fee as a percentage (e.g., 0.001 for 0.1%)
@@ -95,7 +104,7 @@ class BaseStrategy(ABC):
         
         return atr
     
-    def calculate_trade_levels(self, entry_price: float, position_type: int, atr: float) -> tuple:
+    def calculate_trade_levels(self, entry_price: float, position_type: PositionType, atr: float) -> tuple:
         """
         Calculate take profit and stop loss levels based on ATR.
         
@@ -105,7 +114,7 @@ class BaseStrategy(ABC):
         
         Args:
             entry_price (float): Entry price of the trade
-            position_type (int): 1 for long position, -1 for short position
+            position_type (PositionType): LONG or SHORT position type
             atr (float): Average True Range value for volatility measurement
             
         Returns:
@@ -115,8 +124,8 @@ class BaseStrategy(ABC):
             ValueError: If position_type is invalid or ATR is negative
         """
         # Validate inputs
-        if position_type not in [1, -1]:
-            raise ValueError(f"Position type must be 1 (long) or -1 (short), got: {position_type}")
+        if position_type not in [PositionType.LONG, PositionType.SHORT]:
+            raise ValueError(f"Position type must be PositionType.LONG or PositionType.SHORT, got: {position_type}")
         
         if atr < 0:
             raise ValueError(f"ATR must be non-negative, got: {atr}")
@@ -124,7 +133,13 @@ class BaseStrategy(ABC):
         if entry_price <= 0:
             raise ValueError(f"Entry price must be positive, got: {entry_price}")
         
-        if position_type == 1:  # Long position
+        # Handle NaN or None ATR values
+        if pd.isna(atr) or atr is None or atr == 0:
+            # Use a default ATR value (1% of entry price) if ATR is invalid
+            atr = entry_price * 0.01
+            print(f"Warning: Invalid ATR value ({atr}), using default 1% of entry price: {atr}")
+        
+        if position_type == PositionType.LONG:  # Long position
             stop_loss = entry_price - atr
             take_profit = entry_price + (atr * self.risk_reward_ratio)
         else:  # Short position
@@ -305,19 +320,19 @@ class BaseStrategy(ABC):
             "sortino_ratio": sortino_ratio
         }
 
-    def calculate_pnl_with_fees(self, entry_price: float, exit_price: float, position_type: int) -> float:
+    def calculate_pnl_with_fees(self, entry_price: float, exit_price: float, position_type: PositionType) -> float:
         """
         Calculate PnL including trading fees
         
         Args:
             entry_price (float): Entry price of the trade
             exit_price (float): Exit price of the trade
-            position_type (int): 1 for long, -1 for short
+            position_type (PositionType): LONG or SHORT position type
             
         Returns:
             float: PnL as a percentage including fees
         """
-        if position_type == 1:  # Long position
+        if position_type == PositionType.LONG:  # Long position
             # Gross PnL = (exit_price - entry_price) / entry_price
             gross_pnl = (exit_price - entry_price) / entry_price
             
@@ -464,7 +479,7 @@ class BaseStrategy(ABC):
                     'Exit_Date': trade.exit_date,
                     'Entry_Price': trade.entry_price,
                     'Exit_Price': trade.exit_price,
-                    'Position_Type': 'Long' if trade.position_type == 1 else 'Short',
+                    'Position_Type': 'Long' if trade.position_type == PositionType.LONG else 'Short',
                     'PnL': trade.pnl,
                     'PnL_Pct': trade.pnl * 100,
                     'Status': trade.status,
@@ -486,6 +501,20 @@ class BaseStrategy(ABC):
             pd.DataFrame: Data with signals added
         """
         pass
+    
+    def generate_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate strategy indicators without modifying internal state.
+        This method is safe to call multiple times for charting purposes.
+        
+        Args:
+            data (pd.DataFrame): OHLCV data
+            
+        Returns:
+            pd.DataFrame: Data with indicators added
+        """
+        # Default implementation - override in subclasses
+        return data.copy()
 
 class MovingAverageCrossover(BaseStrategy):
     def __init__(self, short_window: int = 20, long_window: int = 50, risk_reward_ratio: float = 2.0, trading_fee: float = 0.0):
@@ -519,7 +548,7 @@ class MovingAverageCrossover(BaseStrategy):
         df['Stop_Loss'] = np.nan
         
         # Initialize position tracking
-        current_position = 0
+        current_position = PositionType.NONE
         
         for i in range(1, len(df)):
             prev_short = df['SMA_short'].iloc[i-1]
@@ -536,110 +565,136 @@ class MovingAverageCrossover(BaseStrategy):
             # Check for crossover
             if prev_short <= prev_long and curr_short > curr_long:
                 # Long signal - close any existing short position first
-                if self.active_trade and self.active_trade.position_type == -1:
+                if self.active_trade and self.active_trade.position_type == PositionType.SHORT:
                     # Exit existing short trade at current price
                     self.active_trade.exit_date = df.index[i]
                     self.active_trade.exit_price = current_price
                     self.active_trade.pnl = self.calculate_pnl_with_fees(
-                        self.active_trade.entry_price, current_price, -1
+                        self.active_trade.entry_price, current_price, PositionType.SHORT
                     )
                     self.active_trade.status = "reversed"
                     self.trades.append(self.active_trade)
                     self.active_trade = None
-                    current_position = 0
+                    current_position = PositionType.NONE
                 
-                if current_position <= 0:  # Enter long position
+                if current_position in [PositionType.NONE]:  # Enter long position
                     df.loc[df.index[i], 'Signal'] = Signal.LONG_ENTRY.value
-                    current_position = 1
-                    take_profit, stop_loss = self.calculate_trade_levels(current_price, 1, current_atr)
+                    current_position = PositionType.LONG
+                    take_profit, stop_loss = self.calculate_trade_levels(current_price, PositionType.LONG, current_atr)
                     df.loc[df.index[i], 'Take_Profit'] = take_profit
                     df.loc[df.index[i], 'Stop_Loss'] = stop_loss
                     self.active_trade = Trade(
                         entry_date=df.index[i],
                         entry_price=current_price,
-                        position_type=1,
+                        position_type=PositionType.LONG,
                         take_profit=take_profit,
                         stop_loss=stop_loss
                     )
             elif prev_short >= prev_long and curr_short < curr_long:
                 # Short signal - close any existing long position first
-                if self.active_trade and self.active_trade.position_type == 1:
+                if self.active_trade and self.active_trade.position_type == PositionType.LONG:
                     # Exit existing long trade at current price
                     self.active_trade.exit_date = df.index[i]
                     self.active_trade.exit_price = current_price
                     self.active_trade.pnl = self.calculate_pnl_with_fees(
-                        self.active_trade.entry_price, current_price, 1
+                        self.active_trade.entry_price, current_price, PositionType.LONG
                     )
                     self.active_trade.status = "reversed"
                     self.trades.append(self.active_trade)
                     self.active_trade = None
-                    current_position = 0
+                    current_position = PositionType.NONE
                 
-                if current_position >= 0:  # Enter short position
+                if current_position in [PositionType.NONE]:  # Enter short position
                     df.loc[df.index[i], 'Signal'] = Signal.SHORT_ENTRY.value
-                    current_position = -1
-                    take_profit, stop_loss = self.calculate_trade_levels(current_price, -1, current_atr)
+                    current_position = PositionType.SHORT
+                    take_profit, stop_loss = self.calculate_trade_levels(current_price, PositionType.SHORT, current_atr)
                     df.loc[df.index[i], 'Take_Profit'] = take_profit
                     df.loc[df.index[i], 'Stop_Loss'] = stop_loss
                     self.active_trade = Trade(
                         entry_date=df.index[i],
                         entry_price=current_price,
-                        position_type=-1,
+                        position_type=PositionType.SHORT,
                         take_profit=take_profit,
                         stop_loss=stop_loss
                     )
             
             # Check for take profit or stop loss
             if self.active_trade:
-                if self.active_trade.position_type == 1:  # Long position
+                if self.active_trade.position_type == PositionType.LONG:  # Long position
                     if current_price >= self.active_trade.take_profit:
                         df.loc[df.index[i], 'Signal'] = Signal.LONG_EXIT.value
                         self.active_trade.exit_date = df.index[i]
                         self.active_trade.exit_price = current_price
                         self.active_trade.pnl = self.calculate_pnl_with_fees(
-                            self.active_trade.entry_price, current_price, 1
+                            self.active_trade.entry_price, current_price, PositionType.LONG
                         )
                         self.active_trade.status = "tp_hit"
                         self.trades.append(self.active_trade)
                         self.active_trade = None
-                        current_position = 0
+                        current_position = PositionType.NONE
                     elif current_price <= self.active_trade.stop_loss:
                         df.loc[df.index[i], 'Signal'] = Signal.LONG_EXIT.value
                         self.active_trade.exit_date = df.index[i]
                         self.active_trade.exit_price = current_price
                         self.active_trade.pnl = self.calculate_pnl_with_fees(
-                            self.active_trade.entry_price, current_price, 1
+                            self.active_trade.entry_price, current_price, PositionType.LONG
                         )
                         self.active_trade.status = "sl_hit"
                         self.trades.append(self.active_trade)
                         self.active_trade = None
-                        current_position = 0
+                        current_position = PositionType.NONE
                 else:  # Short position
                     if current_price <= self.active_trade.take_profit:
                         df.loc[df.index[i], 'Signal'] = Signal.SHORT_EXIT.value
                         self.active_trade.exit_date = df.index[i]
                         self.active_trade.exit_price = current_price
                         self.active_trade.pnl = self.calculate_pnl_with_fees(
-                            self.active_trade.entry_price, current_price, -1
+                            self.active_trade.entry_price, current_price, PositionType.SHORT
                         )
                         self.active_trade.status = "tp_hit"
                         self.trades.append(self.active_trade)
                         self.active_trade = None
-                        current_position = 0
+                        current_position = PositionType.NONE
                     elif current_price >= self.active_trade.stop_loss:
                         df.loc[df.index[i], 'Signal'] = Signal.SHORT_EXIT.value
                         self.active_trade.exit_date = df.index[i]
                         self.active_trade.exit_price = current_price
                         self.active_trade.pnl = self.calculate_pnl_with_fees(
-                            self.active_trade.entry_price, current_price, -1
+                            self.active_trade.entry_price, current_price, PositionType.SHORT
                         )
                         self.active_trade.status = "sl_hit"
                         self.trades.append(self.active_trade)
                         self.active_trade = None
-                        current_position = 0
+                        current_position = PositionType.NONE
             
             # Update position
-            df.loc[df.index[i], 'Position'] = current_position
+            df.loc[df.index[i], 'Position'] = current_position.value
+            
+            # Carry forward take profit and stop loss values if there's an active trade
+            if self.active_trade:
+                df.loc[df.index[i], 'Take_Profit'] = self.active_trade.take_profit
+                df.loc[df.index[i], 'Stop_Loss'] = self.active_trade.stop_loss
+        
+        return df
+    
+    def generate_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate moving average indicators without modifying internal state.
+        
+        Args:
+            data (pd.DataFrame): OHLCV data
+            
+        Returns:
+            pd.DataFrame: Data with indicators added
+        """
+        df = data.copy()
+        
+        # Calculate moving averages
+        df['SMA_short'] = df['Close'].rolling(window=self.short_window).mean()
+        df['SMA_long'] = df['Close'].rolling(window=self.long_window).mean()
+        
+        # Add signal column (empty for indicators only)
+        df['Signal'] = 0
         
         return df
 
@@ -679,7 +734,7 @@ class RSIStrategy(BaseStrategy):
         df['Stop_Loss'] = np.nan
         
         # Initialize position tracking
-        current_position = 0
+        current_position = PositionType.NONE
         
         for i in range(1, len(df)):
             prev_rsi = df['RSI'].iloc[i-1]
@@ -694,113 +749,142 @@ class RSIStrategy(BaseStrategy):
             # Check for oversold condition (potential long entry)
             if prev_rsi > self.oversold and curr_rsi <= self.oversold:
                 # Long signal - close any existing short position first
-                if self.active_trade and self.active_trade.position_type == -1:
+                if self.active_trade and self.active_trade.position_type == PositionType.SHORT:
                     # Exit existing short trade at current price
                     self.active_trade.exit_date = df.index[i]
                     self.active_trade.exit_price = current_price
                     self.active_trade.pnl = self.calculate_pnl_with_fees(
-                        self.active_trade.entry_price, current_price, -1
+                        self.active_trade.entry_price, current_price, PositionType.SHORT
                     )
                     self.active_trade.status = "reversed"
                     self.trades.append(self.active_trade)
                     self.active_trade = None
-                    current_position = 0
+                    current_position = PositionType.NONE
                 
-                if current_position <= 0:  # Enter long position
+                if current_position in [PositionType.NONE, PositionType.SHORT]:  # Enter long position
                     df.loc[df.index[i], 'Signal'] = Signal.LONG_ENTRY.value
-                    current_position = 1
-                    take_profit, stop_loss = self.calculate_trade_levels(current_price, 1, current_atr)
+                    current_position = PositionType.LONG
+                    take_profit, stop_loss = self.calculate_trade_levels(current_price, PositionType.LONG, current_atr)
                     df.loc[df.index[i], 'Take_Profit'] = take_profit
                     df.loc[df.index[i], 'Stop_Loss'] = stop_loss
                     self.active_trade = Trade(
                         entry_date=df.index[i],
                         entry_price=current_price,
-                        position_type=1,
+                        position_type=PositionType.LONG,
                         take_profit=take_profit,
                         stop_loss=stop_loss
                     )
             # Check for overbought condition (potential short entry)
             elif prev_rsi < self.overbought and curr_rsi >= self.overbought:
                 # Short signal - close any existing long position first
-                if self.active_trade and self.active_trade.position_type == 1:
+                if self.active_trade and self.active_trade.position_type == PositionType.LONG:
                     # Exit existing long trade at current price
                     self.active_trade.exit_date = df.index[i]
                     self.active_trade.exit_price = current_price
                     self.active_trade.pnl = self.calculate_pnl_with_fees(
-                        self.active_trade.entry_price, current_price, 1
+                        self.active_trade.entry_price, current_price, PositionType.LONG
                     )
                     self.active_trade.status = "reversed"
                     self.trades.append(self.active_trade)
                     self.active_trade = None
-                    current_position = 0
+                    current_position = PositionType.NONE
                 
-                if current_position >= 0:  # Enter short position
+                if current_position in [PositionType.NONE, PositionType.LONG]:  # Enter short position
                     df.loc[df.index[i], 'Signal'] = Signal.SHORT_ENTRY.value
-                    current_position = -1
-                    take_profit, stop_loss = self.calculate_trade_levels(current_price, -1, current_atr)
+                    current_position = PositionType.SHORT
+                    take_profit, stop_loss = self.calculate_trade_levels(current_price, PositionType.SHORT, current_atr)
                     df.loc[df.index[i], 'Take_Profit'] = take_profit
                     df.loc[df.index[i], 'Stop_Loss'] = stop_loss
                     self.active_trade = Trade(
                         entry_date=df.index[i],
                         entry_price=current_price,
-                        position_type=-1,
+                        position_type=PositionType.SHORT,
                         take_profit=take_profit,
                         stop_loss=stop_loss
                     )
             
             # Check for take profit or stop loss
             if self.active_trade:
-                if self.active_trade.position_type == 1:  # Long position
+                if self.active_trade.position_type == PositionType.LONG:  # Long position
                     if current_price >= self.active_trade.take_profit:
                         df.loc[df.index[i], 'Signal'] = Signal.LONG_EXIT.value
                         self.active_trade.exit_date = df.index[i]
                         self.active_trade.exit_price = current_price
                         self.active_trade.pnl = self.calculate_pnl_with_fees(
-                            self.active_trade.entry_price, current_price, 1
+                            self.active_trade.entry_price, current_price, PositionType.LONG
                         )
                         self.active_trade.status = "tp_hit"
                         self.trades.append(self.active_trade)
                         self.active_trade = None
-                        current_position = 0
+                        current_position = PositionType.NONE
                     elif current_price <= self.active_trade.stop_loss:
                         df.loc[df.index[i], 'Signal'] = Signal.LONG_EXIT.value
                         self.active_trade.exit_date = df.index[i]
                         self.active_trade.exit_price = current_price
                         self.active_trade.pnl = self.calculate_pnl_with_fees(
-                            self.active_trade.entry_price, current_price, 1
+                            self.active_trade.entry_price, current_price, PositionType.LONG
                         )
                         self.active_trade.status = "sl_hit"
                         self.trades.append(self.active_trade)
                         self.active_trade = None
-                        current_position = 0
+                        current_position = PositionType.NONE
                 else:  # Short position
                     if current_price <= self.active_trade.take_profit:
                         df.loc[df.index[i], 'Signal'] = Signal.SHORT_EXIT.value
                         self.active_trade.exit_date = df.index[i]
                         self.active_trade.exit_price = current_price
                         self.active_trade.pnl = self.calculate_pnl_with_fees(
-                            self.active_trade.entry_price, current_price, -1
+                            self.active_trade.entry_price, current_price, PositionType.SHORT
                         )
                         self.active_trade.status = "tp_hit"
                         self.trades.append(self.active_trade)
                         self.active_trade = None
-                        current_position = 0
+                        current_position = PositionType.NONE
                     elif current_price >= self.active_trade.stop_loss:
                         df.loc[df.index[i], 'Signal'] = Signal.SHORT_EXIT.value
                         self.active_trade.exit_date = df.index[i]
                         self.active_trade.exit_price = current_price
                         self.active_trade.pnl = self.calculate_pnl_with_fees(
-                            self.active_trade.entry_price, current_price, -1
+                            self.active_trade.entry_price, current_price, PositionType.SHORT
                         )
                         self.active_trade.status = "sl_hit"
                         self.trades.append(self.active_trade)
                         self.active_trade = None
-                        current_position = 0
+                        current_position = PositionType.NONE
             
             # Update position
-            df.loc[df.index[i], 'Position'] = current_position
+            df.loc[df.index[i], 'Position'] = current_position.value
+            
+            # Carry forward take profit and stop loss values if there's an active trade
+            if self.active_trade:
+                df.loc[df.index[i], 'Take_Profit'] = self.active_trade.take_profit
+                df.loc[df.index[i], 'Stop_Loss'] = self.active_trade.stop_loss
         
-        return df 
+        return df
+    
+    def generate_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate RSI indicators without modifying internal state.
+        
+        Args:
+            data (pd.DataFrame): OHLCV data
+            
+        Returns:
+            pd.DataFrame: Data with indicators added
+        """
+        df = data.copy()
+        
+        # Calculate RSI
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=self.period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=self.period).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        # Add signal column (empty for indicators only)
+        df['Signal'] = 0
+        
+        return df
 
 class DonchianChannelBreakout(BaseStrategy):
     def __init__(self, channel_period: int = 20, risk_reward_ratio: float = 2.0, trading_fee: float = 0.0):
@@ -830,7 +914,7 @@ class DonchianChannelBreakout(BaseStrategy):
         df['Take_Profit'] = np.nan
         df['Stop_Loss'] = np.nan
         
-        current_position = 0
+        current_position = PositionType.NONE
         
         for i in range(self.channel_period, len(df)):
             current_price = df['Close'].iloc[i]
@@ -845,109 +929,114 @@ class DonchianChannelBreakout(BaseStrategy):
             # Long breakout
             if current_price > donchian_high:
                 # Long signal - close any existing short position first
-                if self.active_trade and self.active_trade.position_type == -1:
+                if self.active_trade and self.active_trade.position_type == PositionType.SHORT:
                     # Exit existing short trade at current price
                     self.active_trade.exit_date = df.index[i]
                     self.active_trade.exit_price = current_price
                     self.active_trade.pnl = self.calculate_pnl_with_fees(
-                        self.active_trade.entry_price, current_price, -1
+                        self.active_trade.entry_price, current_price, PositionType.SHORT
                     )
                     self.active_trade.status = "reversed"
                     self.trades.append(self.active_trade)
                     self.active_trade = None
-                    current_position = 0
+                    current_position = PositionType.NONE
                 
-                if current_position <= 0:
+                if current_position in [PositionType.NONE, PositionType.SHORT]:
                     df.loc[df.index[i], 'Signal'] = Signal.LONG_ENTRY.value
-                    current_position = 1
-                    take_profit, stop_loss = self.calculate_trade_levels(current_price, 1, current_atr)
+                    current_position = PositionType.LONG
+                    take_profit, stop_loss = self.calculate_trade_levels(current_price, PositionType.LONG, current_atr)
                     df.loc[df.index[i], 'Take_Profit'] = take_profit
                     df.loc[df.index[i], 'Stop_Loss'] = stop_loss
                     self.active_trade = Trade(
                         entry_date=df.index[i],
                         entry_price=current_price,
-                        position_type=1,
+                        position_type=PositionType.LONG,
                         take_profit=take_profit,
                         stop_loss=stop_loss
                     )
             # Short breakout
             elif current_price < donchian_low:
                 # Short signal - close any existing long position first
-                if self.active_trade and self.active_trade.position_type == 1:
+                if self.active_trade and self.active_trade.position_type == PositionType.LONG:
                     # Exit existing long trade at current price
                     self.active_trade.exit_date = df.index[i]
                     self.active_trade.exit_price = current_price
                     self.active_trade.pnl = self.calculate_pnl_with_fees(
-                        self.active_trade.entry_price, current_price, 1
+                        self.active_trade.entry_price, current_price, PositionType.LONG
                     )
                     self.active_trade.status = "reversed"
                     self.trades.append(self.active_trade)
                     self.active_trade = None
-                    current_position = 0
+                    current_position = PositionType.NONE
                 
-                if current_position >= 0:
+                if current_position in [PositionType.NONE, PositionType.LONG]:
                     df.loc[df.index[i], 'Signal'] = Signal.SHORT_ENTRY.value
-                    current_position = -1
-                    take_profit, stop_loss = self.calculate_trade_levels(current_price, -1, current_atr)
+                    current_position = PositionType.SHORT
+                    take_profit, stop_loss = self.calculate_trade_levels(current_price, PositionType.SHORT, current_atr)
                     df.loc[df.index[i], 'Take_Profit'] = take_profit
                     df.loc[df.index[i], 'Stop_Loss'] = stop_loss
                     self.active_trade = Trade(
                         entry_date=df.index[i],
                         entry_price=current_price,
-                        position_type=-1,
+                        position_type=PositionType.SHORT,
                         take_profit=take_profit,
                         stop_loss=stop_loss
                     )
 
             # Check for take profit or stop loss
             if self.active_trade:
-                if self.active_trade.position_type == 1:  # Long
+                if self.active_trade.position_type == PositionType.LONG:  # Long
                     if current_price >= self.active_trade.take_profit:
                         df.loc[df.index[i], 'Signal'] = Signal.LONG_EXIT.value
                         self.active_trade.exit_date = df.index[i]
                         self.active_trade.exit_price = current_price
                         self.active_trade.pnl = self.calculate_pnl_with_fees(
-                            self.active_trade.entry_price, current_price, 1
+                            self.active_trade.entry_price, current_price, PositionType.LONG
                         )
                         self.active_trade.status = "tp_hit"
                         self.trades.append(self.active_trade)
                         self.active_trade = None
-                        current_position = 0
+                        current_position = PositionType.NONE
                     elif current_price <= self.active_trade.stop_loss:
                         df.loc[df.index[i], 'Signal'] = Signal.LONG_EXIT.value
                         self.active_trade.exit_date = df.index[i]
                         self.active_trade.exit_price = current_price
                         self.active_trade.pnl = self.calculate_pnl_with_fees(
-                            self.active_trade.entry_price, current_price, 1
+                            self.active_trade.entry_price, current_price, PositionType.LONG
                         )
                         self.active_trade.status = "sl_hit"
                         self.trades.append(self.active_trade)
                         self.active_trade = None
-                        current_position = 0
+                        current_position = PositionType.NONE
                 else:  # Short
                     if current_price <= self.active_trade.take_profit:
                         df.loc[df.index[i], 'Signal'] = Signal.SHORT_EXIT.value
                         self.active_trade.exit_date = df.index[i]
                         self.active_trade.exit_price = current_price
                         self.active_trade.pnl = self.calculate_pnl_with_fees(
-                            self.active_trade.entry_price, current_price, -1
+                            self.active_trade.entry_price, current_price, PositionType.SHORT
                         )
                         self.active_trade.status = "tp_hit"
                         self.trades.append(self.active_trade)
                         self.active_trade = None
-                        current_position = 0
+                        current_position = PositionType.NONE
                     elif current_price >= self.active_trade.stop_loss:
                         df.loc[df.index[i], 'Signal'] = Signal.SHORT_EXIT.value
                         self.active_trade.exit_date = df.index[i]
                         self.active_trade.exit_price = current_price
                         self.active_trade.pnl = self.calculate_pnl_with_fees(
-                            self.active_trade.entry_price, current_price, -1
+                            self.active_trade.entry_price, current_price, PositionType.SHORT
                         )
                         self.active_trade.status = "sl_hit"
                         self.trades.append(self.active_trade)
                         self.active_trade = None
-                        current_position = 0
+                        current_position = PositionType.NONE
             
-            df.loc[df.index[i], 'Position'] = current_position
+            df.loc[df.index[i], 'Position'] = current_position.value
+            
+            # Carry forward take profit and stop loss values if there's an active trade
+            if self.active_trade:
+                df.loc[df.index[i], 'Take_Profit'] = self.active_trade.take_profit
+                df.loc[df.index[i], 'Stop_Loss'] = self.active_trade.stop_loss
         
         return df 

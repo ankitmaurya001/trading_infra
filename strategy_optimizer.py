@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple, Any, Optional
 from itertools import product
 import warnings
 import logging
-from strategies import BaseStrategy, MovingAverageCrossover, RSIStrategy, DonchianChannelBreakout
+from strategies import BaseStrategy, MovingAverageCrossover, RSIStrategy, DonchianChannelBreakout, PositionType
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -144,7 +144,7 @@ class StrategyOptimizer:
         """
         strategy.trades = []
         strategy.active_trade = None
-        strategy.current_position = 0
+        strategy.current_position = PositionType.NONE
         strategy.signals = None
     
     def optimize(self, n_jobs: int = 1) -> Tuple[Dict[str, Any], Dict[str, float]]:
@@ -282,7 +282,8 @@ class StrategyOptimizer:
             # Filter out penalty scores for better analysis
             valid_scores = [s for s in scores if s > self.PENALTY_SCORE]
             if valid_scores:
-                avg_scores[param_value] = np.mean(valid_scores)
+                #avg_scores[param_value] = np.mean(valid_scores)
+                avg_scores[param_value] = np.median(valid_scores)
             else:
                 avg_scores[param_value] = self.PENALTY_SCORE
         

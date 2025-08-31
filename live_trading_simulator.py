@@ -135,7 +135,7 @@ class LiveTradingSimulator:
         # Initialize decision log
         decision_log_df = pd.DataFrame(columns=[
             'timestamp', 'symbol', 'strategy', 'signal', 'signal_name', 'current_price',
-            'current_balance', 'active_trades_count', 'position_type', 'take_profit', 'stop_loss'
+            'current_balance', 'active_trades_count', 'position_type', 'take_profit', 'stop_loss', 'trade_status'
         ])
         decision_log_df.to_csv(self.decision_log_file, index=False)
         
@@ -438,8 +438,20 @@ class LiveTradingSimulator:
                     # Update trade
                     trade['exit_price'] = price
                     trade['exit_time'] = timestamp
-                    trade['status'] = 'closed'
                     trade['pnl'] = pnl
+                    
+                    # Get detailed status from strategy's trade history
+                    strategy_trades = strategy.get_trade_history()
+                    if not strategy_trades.empty:
+                        # Find the most recent closed trade from the strategy
+                        recent_trades = strategy_trades.tail(1)
+                        if not recent_trades.empty:
+                            detailed_status = recent_trades['Status'].iloc[0]
+                            trade['status'] = detailed_status
+                        else:
+                            trade['status'] = 'closed'
+                    else:
+                        trade['status'] = 'closed'
                     
                     # Update balance - add back original position value plus profit/loss
                     original_position_value = trade['quantity'] * trade['entry_price']
@@ -510,14 +522,23 @@ class LiveTradingSimulator:
             take_profit = None
             stop_loss = None
             
+            # Get take profit and stop loss from signals data if available
+            if 'Take_Profit' in signals_data.columns and 'Stop_Loss' in signals_data.columns:
+                take_profit = signals_data['Take_Profit'].iloc[-1]
+                stop_loss = signals_data['Stop_Loss'].iloc[-1]
+                
+                # Handle NaN values
+                if pd.isna(take_profit):
+                    take_profit = None
+                if pd.isna(stop_loss):
+                    stop_loss = None
+            
             # Find active trade for this strategy
+            trade_status = "NONE"
             for trade in self.active_trades:
                 if trade['strategy'] == strategy.name:
                     position_type = trade['action']
-                    # Get take profit and stop loss from signals data if available
-                    if 'Take_Profit' in signals_data.columns and 'Stop_Loss' in signals_data.columns:
-                        take_profit = signals_data['Take_Profit'].iloc[-1]
-                        stop_loss = signals_data['Stop_Loss'].iloc[-1]
+                    trade_status = trade.get('status', 'open')
                     break
             
             log_entry = {
@@ -531,7 +552,8 @@ class LiveTradingSimulator:
                 'active_trades_count': active_trades_count,
                 'position_type': position_type,
                 'take_profit': take_profit,
-                'stop_loss': stop_loss
+                'stop_loss': stop_loss,
+                'trade_status': trade_status
             }
             
             # Append to CSV
