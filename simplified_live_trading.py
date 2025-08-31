@@ -738,7 +738,8 @@ def main():
             trade_history_df=simulator.get_trade_history_df(),
             strategies=strategies,
             symbol=symbol,
-            active_trade_info=status.get('active_trade_info')
+            active_trade_info=status.get('active_trade_info'),
+            session_id=simulator.session_id
         )
         
         if live_chart:
