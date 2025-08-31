@@ -36,15 +36,15 @@ def get_trade_log_path(session_id: str) -> Optional[str]:
         print(f"⚠️ Trade log not found: {trade_log_path}")
         return None
 
-def parse_completed_trades_from_csv(log_file_path: str) -> pd.DataFrame:
+def parse_trades_from_csv(log_file_path: str) -> pd.DataFrame:
     """
-    Parse completed trades from CSV file.
+    Parse all trades (completed and open) from CSV file.
     
     Args:
         log_file_path: Path to the trade log CSV file
         
     Returns:
-        DataFrame with completed trades (entry and exit paired)
+        DataFrame with all trades (completed and open)
     """
     if not os.path.exists(log_file_path):
         print(f"⚠️ Trade log file not found: {log_file_path}")
@@ -61,31 +61,32 @@ def parse_completed_trades_from_csv(log_file_path: str) -> pd.DataFrame:
         # Convert timestamp to datetime
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         
-        # Group by trade_id to pair entry and exit records
-        completed_trades = []
+        # Group by trade_id to process all trades
+        all_trades = []
         
         for trade_id in df['trade_id'].unique():
             trade_records = df[df['trade_id'] == trade_id]
             
-            if len(trade_records) >= 2:
-                # Find entry record (BUY/SELL with open status)
-                entry_record = trade_records[
-                    (trade_records['action'].isin(['BUY', 'SELL'])) & 
-                    (trade_records['status'] == 'open')
-                ]
+            # Find entry record (BUY/SELL with open status)
+            entry_record = trade_records[
+                (trade_records['action'].isin(['BUY', 'SELL'])) & 
+                (trade_records['status'] == 'open')
+            ]
+            
+            # Find exit record (EXIT with closed status)
+            exit_record = trade_records[
+                (trade_records['action'] == 'EXIT') & 
+                (trade_records['status'].isin(['tp_hit', 'sl_hit', 'closed']))
+            ]
+            
+            if not entry_record.empty:
+                entry = entry_record.iloc[0]
                 
-                # Find exit record (EXIT with closed status)
-                exit_record = trade_records[
-                    (trade_records['action'] == 'EXIT') & 
-                    (trade_records['status'].isin(['tp_hit', 'sl_hit', 'closed']))
-                ]
-                
-                if not entry_record.empty and not exit_record.empty:
-                    entry = entry_record.iloc[0]
+                if not exit_record.empty:
+                    # Completed trade
                     exit = exit_record.iloc[0]
-                    
-                    # Create trade object
                     trade = {
+                        'trade_id': int(trade_id),
                         'entry_time': entry['timestamp'],
                         'entry_price': float(entry['price']),
                         'exit_time': exit['timestamp'],
@@ -93,17 +94,36 @@ def parse_completed_trades_from_csv(log_file_path: str) -> pd.DataFrame:
                         'pnl': float(exit['pnl']),
                         'strategy': entry['strategy'],
                         'action': entry['action'],
-                        'exit_reason': exit['status']
+                        'exit_reason': exit['status'],
+                        'status': 'completed'
                     }
-                    completed_trades.append(trade)
+                    all_trades.append(trade)
                     print(f"📊 Found completed trade {trade_id}: {entry['action']} @ ${entry['price']:.2f} → EXIT @ ${exit['price']:.2f} (PnL: {exit['pnl']:.2%})")
+                else:
+                    # Open trade (no exit record yet)
+                    trade = {
+                        'trade_id': int(trade_id),
+                        'entry_time': entry['timestamp'],
+                        'entry_price': float(entry['price']),
+                        'exit_time': None,
+                        'exit_price': None,
+                        'pnl': None,
+                        'strategy': entry['strategy'],
+                        'action': entry['action'],
+                        'exit_reason': None,
+                        'status': 'open'
+                    }
+                    all_trades.append(trade)
+                    print(f"📊 Found open trade {trade_id}: {entry['action']} @ ${entry['price']:.2f} (Status: Open)")
         
-        if completed_trades:
-            result_df = pd.DataFrame(completed_trades)
-            print(f"✅ Found {len(result_df)} completed trades")
+        if all_trades:
+            result_df = pd.DataFrame(all_trades)
+            completed_count = len(result_df[result_df['status'] == 'completed'])
+            open_count = len(result_df[result_df['status'] == 'open'])
+            print(f"✅ Found {completed_count} completed trades and {open_count} open trades")
             return result_df
         else:
-            print("⚠️ No completed trades found in log file")
+            print("⚠️ No trades found in log file")
             return pd.DataFrame()
             
     except Exception as e:
@@ -862,21 +882,21 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                 row=1, col=1
             )
     
-    # Get completed trades from CSV logs using session_id
+        # Get all trades from CSV logs using session_id
     trade_log_path = get_trade_log_path(session_id)
     if trade_log_path:
-        completed_trades = parse_completed_trades_from_csv(trade_log_path)
+        all_trades = parse_trades_from_csv(trade_log_path)
     else:
         print(f"⚠️ No trade log found for session: {session_id}")
-        completed_trades = pd.DataFrame()
+        all_trades = pd.DataFrame()
     
-        # Add trade markers if we have completed trades
-    if not completed_trades.empty:
+    # Add trade markers if we have trades
+    if not all_trades.empty:
         # Entry points
         fig.add_trace(
             go.Scatter(
-                x=completed_trades['entry_time'],
-                y=completed_trades['entry_price'],
+                x=all_trades['entry_time'],
+                y=all_trades['entry_price'],
                     mode='markers',
                     marker=dict(
                         symbol='circle',
@@ -887,21 +907,62 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                                     name='Trade Entry',
                 hovertemplate=(
                     "<b>Trade Entry</b><br>" +
-                    "Trade ID: %{customdata}<br>" +
+                    "Trade ID: %{customdata[0]}<br>" +
+                    "Type: %{customdata[1]}<br>" +
+                    "Status: %{customdata[2]}<br>" +
                     "Date: %{x}<br>" +
                     "Price: $%{y:.2f}<br>" +
                     "<extra></extra>"
                 ),
-                customdata=completed_trades.index + 1  # Trade ID (1-based index)
+                customdata=list(zip(
+                    all_trades['trade_id'],
+                    all_trades['action'],
+                    all_trades['status']
+                ))
             ),
             row=1, col=1
         )
+        
+        # Open trades (different marker style)
+        open_trades = all_trades[all_trades['status'] == 'open']
+        if not open_trades.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=open_trades['entry_time'],
+                    y=open_trades['entry_price'],
+                    mode='markers',
+                    marker=dict(
+                        symbol='diamond',
+                        size=14,
+                        color='#FFD700',  # Gold color for open trades
+                        line=dict(color='black', width=2)
+                    ),
+                    name='Open Trade Entry',
+                    hovertemplate=(
+                        "<b>Open Trade Entry</b><br>" +
+                        "Trade ID: %{customdata[0]}<br>" +
+                        "Type: %{customdata[1]}<br>" +
+                        "Status: %{customdata[2]}<br>" +
+                        "Date: %{x}<br>" +
+                        "Price: $%{y:.2f}<br>" +
+                        "<extra></extra>"
+                    ),
+                    customdata=list(zip(
+                        open_trades['trade_id'],
+                        open_trades['action'],
+                        open_trades['status']
+                    ))
+                ),
+                row=1, col=1
+            )
             
-            # Exit points
-        fig.add_trace(
-            go.Scatter(
-                x=completed_trades['exit_time'],
-                y=completed_trades['exit_price'],
+        # Exit points (only for completed trades)
+        completed_trades = all_trades[all_trades['status'] == 'completed']
+        if not completed_trades.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=completed_trades['exit_time'],
+                    y=completed_trades['exit_price'],
                 mode='markers',
                 marker=dict(
                     symbol='x',
@@ -912,17 +973,24 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                 name='Trade Exit',
                 hovertemplate=(
                     "<b>Trade Exit</b><br>" +
-                    "Trade ID: %{customdata}<br>" +
+                    "Trade ID: %{customdata[0]}<br>" +
+                    "Type: %{customdata[1]}<br>" +
+                    "Exit Reason: %{customdata[2]}<br>" +
                     "Date: %{x}<br>" +
                     "Price: $%{y:.2f}<br>" +
                     "<extra></extra>"
                 ),
-                customdata=completed_trades.index + 1  # Trade ID (1-based index)
+                customdata=list(zip(
+                    completed_trades['trade_id'],
+                    completed_trades['action'],
+                    completed_trades['exit_reason']
+                ))
             ),
             row=1, col=1
         )
             
-        # Add trade lines connecting entry to exit
+        
+        # Add trade lines connecting entry to exit (only for completed trades)
         for _, trade in completed_trades.iterrows():
             fig.add_trace(
                 go.Scatter(
@@ -936,7 +1004,9 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                     ),
                     showlegend=False,
                     hovertemplate=(
-                        f"<b>Trade {completed_trades.index.get_loc(trade.name) + 1} PnL: {trade['pnl']:.2%}</b><br>" +
+                        f"<b>Trade {trade['trade_id']} PnL: {trade['pnl']:.2%}</b><br>" +
+                        f"Type: {trade['action']}<br>" +
+                        f"Exit Reason: {trade['exit_reason']}<br>" +
                         f"Entry: ${trade['entry_price']:.2f}<br>" +
                         f"Exit: ${trade['exit_price']:.2f}<br>" +
                         "<extra></extra>"
