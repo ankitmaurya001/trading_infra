@@ -863,11 +863,13 @@ def main():
     trade_history_df = simulator.get_trade_history_df()
     display_trade_history(trade_history_df, symbol)
     
-    # Performance Metrics using modular component
+    # Performance Metrics using modular component - Always show this section
+    st.subheader("📊 Performance Metrics")
+    metrics = simulator.calculate_performance_metrics()
+    display_performance_metrics(metrics)
+    
+    # Performance charts and recent trades - Only show if there are trades
     if not trade_history_df.empty:
-        metrics = simulator.calculate_performance_metrics()
-        display_performance_metrics(metrics)
-        
         # Performance charts
         st.subheader("📊 Performance Analysis")
         performance_fig = create_performance_chart(trade_history_df, initial_balance)
@@ -876,7 +878,7 @@ def main():
         
         # Recent Trades Summary
         st.subheader("📋 Recent Trades")
-        closed_trades = trade_history_df[trade_history_df['status'] == 'closed'].tail(10)
+        closed_trades = trade_history_df[trade_history_df['status'].isin(['closed', 'tp_hit', 'sl_hit', 'reversed'])].tail(10)
         
         # Check if required columns exist
         required_columns = ['entry_time', 'exit_time', 'entry_price', 'exit_price', 'pnl', 'action', 'strategy']
@@ -902,6 +904,10 @@ def main():
                         st.write(f"{trade['entry_time'].strftime('%m/%d %H:%M')} → {trade['exit_time'].strftime('%m/%d %H:%M')}")
                     with col5:
                         st.write(f"{trade_color} ${trade['pnl'] * trade['quantity'] * trade['entry_price']:.2f}")
+        else:
+            st.info("No closed trades yet. Performance metrics will appear here once trades are executed.")
+    else:
+        st.info("No trades executed yet. Performance metrics will appear here once trading begins.")
     
     # Market data display
     display_market_data(simulator.current_data)

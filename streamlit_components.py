@@ -269,6 +269,7 @@ def display_performance_metrics(metrics: Dict):
         metrics: Dictionary containing performance metrics
     """
     if not metrics or metrics.get('total_trades', 0) == 0:
+        st.info("No performance metrics available yet. Metrics will appear here once trades are executed.")
         return
     
     st.subheader("📊 Performance Metrics")
@@ -358,7 +359,7 @@ def create_performance_chart(trade_history_df: pd.DataFrame, initial_balance: fl
         return None
     
     # Filter for closed trades and check if exit_time column exists
-    closed_trades = trade_history_df[trade_history_df['status'] == 'closed']
+    closed_trades = trade_history_df[trade_history_df['status'].isin(['closed', 'tp_hit', 'sl_hit', 'reversed'])]
     
     if closed_trades.empty:
         return None

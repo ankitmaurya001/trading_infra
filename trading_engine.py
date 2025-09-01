@@ -361,10 +361,11 @@ class TradingEngine:
         if trade_history_df.empty:
             return self._get_empty_metrics()
         
-        # Filter closed trades
-        closed_trades = trade_history_df[trade_history_df['status'] == 'closed'].copy()
+        # Filter closed trades (including all closed statuses)
+        closed_trades = trade_history_df[trade_history_df['status'].isin(['closed', 'tp_hit', 'sl_hit', 'reversed'])].copy()
         
         if closed_trades.empty:
+            print(f"[INFO] No closed trades found in trade history")
             return self._get_empty_metrics()
         
         # Sort by exit time for proper chronological order
