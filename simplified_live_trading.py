@@ -490,8 +490,8 @@ class SimplifiedLiveTradingSimulator:
                     
                     # Calculate progress
                     progress = (self.mock_current_index / len(self.mock_data)) * 100
-                    print(f"🎭 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Processing NEW mock data point {self.mock_current_index + 1}/{len(self.mock_data)} ({progress:.1f}%)")
-                    print(f"📊 Mock data: {current_time} - Close: ${current_data_point['Close']:.2f}")
+                    # print(f"🎭 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Processing NEW mock data point {self.mock_current_index + 1}/{len(self.mock_data)} ({progress:.1f}%)")
+                    # print(f"📊 Mock data: {current_time} - Close: ${current_data_point['Close']:.2f}")
                     
                     # Save data to CSV
                     self.trading_engine.save_data_to_csv(data, current_time)
@@ -505,7 +505,7 @@ class SimplifiedLiveTradingSimulator:
                     
                     # Update the last processed index
                     self.last_processed_index = self.mock_current_index
-                    print(f"✅ Strategies processed for new data point {self.mock_current_index + 1}")
+                    # print(f"✅ Strategies processed for new data point {self.mock_current_index + 1}")
                 else:
                     # No new data to process, just wait
                     print(f"⏸️  No new data point to process. Waiting...")

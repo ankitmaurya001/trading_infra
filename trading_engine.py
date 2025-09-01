@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import os
 import json
 import logging
+from strategies import Signal
 
 from strategies import BaseStrategy
 
@@ -226,14 +227,14 @@ class TradingEngine:
         
         # Log signal generation
         signal_name = {
-            0: "HOLD",
-            1: "LONG_ENTRY", 
-            -1: "SHORT_ENTRY",
-            2: "LONG_EXIT",
-            -2: "SHORT_EXIT"
+            Signal.HOLD.value: "HOLD",
+            Signal.LONG_ENTRY.value: "LONG_ENTRY", 
+            Signal.SHORT_ENTRY.value: "SHORT_ENTRY",
+            Signal.LONG_EXIT.value: "LONG_EXIT",
+            Signal.SHORT_EXIT.value: "SHORT_EXIT"
         }.get(latest_signal, f"UNKNOWN({latest_signal})")
         
-        print(f"📊 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - Signal: {signal_name} @ ${current_price:.2f}")
+        #print(f"📊 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - Signal: {signal_name} @ ${current_price:.2f}")
         
         # Log decision to CSV
         self._log_decision(strategy, latest_signal, signal_name, current_price, current_time, signals_data)
@@ -242,36 +243,42 @@ class TradingEngine:
         action_taken = None
         
         # Check for entry signals (only if no active trades exist and sufficient balance)
-        if latest_signal == 1 and self.current_balance > 0 and len(self.active_trades) == 0:  # Long entry
+        if latest_signal == Signal.LONG_ENTRY.value and self.current_balance > 0 and len(self.active_trades) == 0:  # Long entry
             print(f"🟢 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - LONG ENTRY signal detected")
             trade = self.execute_trade(strategy, 'BUY', current_price, current_time)
             trades_executed.append(trade)
             action_taken = 'LONG_ENTRY'
-        elif latest_signal == -1 and self.current_balance > 0 and len(self.active_trades) == 0:  # Short entry
+        elif latest_signal == Signal.SHORT_ENTRY.value and self.current_balance > 0 and len(self.active_trades) == 0:  # Short entry
             print(f"🔴 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - SHORT ENTRY signal detected")
             trade = self.execute_trade(strategy, 'SELL', current_price, current_time)
             trades_executed.append(trade)
             action_taken = 'SHORT_ENTRY'
-        elif (latest_signal == 1 or latest_signal == -1) and len(self.active_trades) > 0:
+        elif (latest_signal == Signal.LONG_ENTRY.value or latest_signal == Signal.SHORT_ENTRY.value) and len(self.active_trades) > 0:
             # Signal ignored because active trade exists
-            signal_type = "LONG ENTRY" if latest_signal == 1 else "SHORT ENTRY"
+            signal_type = "LONG ENTRY" if latest_signal == Signal.LONG_ENTRY.value else "SHORT ENTRY"
             print(f"⚠️  [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - {signal_type} signal IGNORED (active trade exists)")
-        elif (latest_signal == 1 or latest_signal == -1) and self.current_balance <= 0:
+        elif (latest_signal == Signal.LONG_ENTRY.value or latest_signal == Signal.SHORT_ENTRY.value) and self.current_balance <= 0:
             # Signal ignored because insufficient balance
-            signal_type = "LONG ENTRY" if latest_signal == 1 else "SHORT ENTRY"
+            signal_type = "LONG ENTRY" if latest_signal == Signal.LONG_ENTRY.value else "SHORT ENTRY"
             print(f"⚠️  [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - {signal_type} signal IGNORED (insufficient balance: ${self.current_balance:.2f})")
         
         # Check for exit signals
-        if latest_signal == 2:  # Long exit
-            print(f"🟢 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - LONG EXIT signal detected")
-            closed_trades = self.close_trades(strategy, 'LONG', current_price, current_time)
-            trades_executed.extend(closed_trades)
-            action_taken = 'LONG_EXIT'
-        elif latest_signal == -2:  # Short exit
-            print(f"🔴 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - SHORT EXIT signal detected")
-            closed_trades = self.close_trades(strategy, 'SHORT', current_price, current_time)
-            trades_executed.extend(closed_trades)
-            action_taken = 'SHORT_EXIT'
+        if latest_signal == Signal.LONG_EXIT.value:  # Long exit
+            if len(self.active_trades) > 0:
+                print(f"🟢 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - LONG EXIT signal detected")
+                closed_trades = self.close_trades(strategy, 'LONG', current_price, current_time)
+                trades_executed.extend(closed_trades)
+                action_taken = 'LONG_EXIT'
+            else:
+                print(f"⚠️  [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - LONG EXIT signal IGNORED (no active trades)")
+        elif latest_signal == Signal.SHORT_EXIT.value:  # Short exit
+            if len(self.active_trades) > 0:
+                print(f"🔴 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - SHORT EXIT signal detected")
+                closed_trades = self.close_trades(strategy, 'SHORT', current_price, current_time)
+                trades_executed.extend(closed_trades)
+                action_taken = 'SHORT_EXIT'
+            else:
+                print(f"⚠️  [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - SHORT EXIT signal IGNORED (no active trades)")
         
         return {
             'signal': latest_signal,
@@ -610,7 +617,7 @@ class TradingEngine:
             # Save to CSV (append mode)
             data_copy.to_csv(self.data_log_file, mode='a', header=not os.path.exists(self.data_log_file), index=True)
             
-            print(f"💾 [{fetch_time.strftime('%Y-%m-%d %H:%M:%S')}] Data saved to {self.data_log_file}")
+            # print(f"💾 [{fetch_time.strftime('%Y-%m-%d %H:%M:%S')}] Data saved to {self.data_log_file}")
     
     def get_log_files_info(self) -> Dict:
         """
