@@ -81,9 +81,8 @@ def calculate_next_tick_time(interval: str, current_time: datetime = None) -> da
             # For other intervals, find the next multiple
             next_minute = ((current_minute // minutes) + 1) * minutes
             if next_minute >= 60:
-                next_hour = current_hour + 1
-                next_minute = next_minute % 60
-                next_tick = current_time.replace(hour=next_hour, minute=next_minute, second=0, microsecond=0)
+                # Use timedelta to handle hour rollover properly
+                next_tick = current_time.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1, minutes=next_minute % 60)
             else:
                 next_tick = current_time.replace(minute=next_minute, second=0, microsecond=0)
     
@@ -638,7 +637,7 @@ def main():
     polling_frequency = st.sidebar.slider(
         "Polling Frequency (seconds)",
         min_value=1,
-        max_value=300,
+        max_value=1000,
         value=60,
         step=5
     )

@@ -4,6 +4,15 @@ numpy>=1.20.0
 yfinance>=0.1.70
 pandas-datareader>=0.10.0
 
+# Kite Connect for Zerodha
+kiteconnect>=4.0.0
+
+# HTTP requests for automated authentication
+requests>=2.25.0
+
+# TOTP for 2FA authentication
+onetimepass>=1.0.1
+
 # Data analysis
 scipy>=1.7.0
 statsmodels>=0.12.0

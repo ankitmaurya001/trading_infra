@@ -25,7 +25,7 @@ def main():
     symbol = "BTC-USD"
     #start_date = "2025-07-30"
     start_date=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-    end_date=datetime.now().strftime("%Y-%m-%d")
+    end_date=(datetime.now() +timedelta(days=1)).strftime("%Y-%m-%d")
     #end_date = "2025-07-20"
     #end_date = "2025-08-24"
     interval = "15m"
