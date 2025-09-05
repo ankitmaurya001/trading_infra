@@ -17,7 +17,7 @@ from typing import List, Dict
 
 from strategy_manager import StrategyManager
 from trading_engine import TradingEngine
-from data_fetcher import DataFetcher
+from data_fetcher import BinanceDataFetcher
 from streamlit_components import (
     display_trading_status,
     display_strategy_parameters,
@@ -31,13 +31,46 @@ from streamlit_components import (
     create_strategy_parameter_inputs,
     create_live_trading_chart
 )
+import config as cfg
+
+
+def filter_market_hours(data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Filter data to include only market hours for Indian markets.
+    NSE/BSE trading hours: 9:15 AM to 3:30 PM IST (Monday to Friday)
+    
+    Args:
+        data: DataFrame with datetime index
+        
+    Returns:
+        Filtered DataFrame with only market hours
+    """
+    if data.empty:
+        return data
+    
+    # Ensure we have timezone-aware data
+    if data.index.tz is None:
+        data.index = data.index.tz_localize('Asia/Kolkata')
+    else:
+        data.index = data.index.tz_convert('Asia/Kolkata')
+    
+    # Filter for market hours (9:15 AM to 3:30 PM IST)
+    market_hours = data.between_time('09:15', '15:30')
+    
+    # Filter for weekdays only (Monday=0, Sunday=6)
+    weekdays = market_hours[market_hours.index.weekday < 5]
+    
+    print(f"Filtered data from {len(data)} to {len(weekdays)} records (market hours only)")
+    
+    return weekdays
+
 
 def calculate_next_tick_time(interval: str, current_time: datetime = None) -> datetime:
     """
     Calculate the next tick time based on the interval.
     
     Args:
-        interval: Data interval (e.g., "5m", "15m", "30m", "1h", "1d")
+        interval: Data interval (e.g., "5m", "15m", "30m", "60m", "1h", "1d")
         current_time: Current time (defaults to now)
         
     Returns:
@@ -127,7 +160,12 @@ class SimplifiedLiveTradingSimulator:
     def __init__(self, initial_balance: float = 10000):
         self.strategy_manager = StrategyManager()
         self.trading_engine = TradingEngine(initial_balance)
-        self.data_fetcher = DataFetcher()
+        # self.data_fetcher = DataFetcher()
+
+        # Setup 
+        
+        # Initialize Binance data fetcher
+        self.data_fetcher = BinanceDataFetcher(api_key=cfg.BINANCE_API_KEY, api_secret=cfg.BINANCE_SECRET_KEY)
         
         # Trading state
         self.is_running = False
@@ -333,20 +371,27 @@ class SimplifiedLiveTradingSimulator:
         
         # Calculate date range
         # end_date = datetime.now().strftime("%Y-%m-%d")
-        end_date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        end_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
         
         if interval in ["5m", "15m", "30m", "1h"]:
             # For intraday data, fetch more historical data
-            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d %H:%M:%S')
         else:
             # For daily data, fetch more historical data
-            start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S')
         
         print(f"📥 Fetching historical data from {start_date} to {end_date}")
         
         # Fetch all historical data
-        data = self.data_fetcher.fetch_data(symbol, start_date, end_date, interval=interval)
+        data = self.data_fetcher.fetch_historical_data(symbol, start_date, end_date, interval=interval)
         
+        # Filter for market hours only
+        # print(f"\n🕒 Filtering for market hours (9:15 AM - 3:30 PM IST)...")
+        # data = filter_market_hours(data)
+
+
+
         if data.empty:
             print(f"❌ No data fetched for {symbol}")
             return
@@ -403,18 +448,23 @@ class SimplifiedLiveTradingSimulator:
                         
                 # Calculate date range for data fetching
                 if interval in ["5m", "15m", "30m", "1h"]:
-                    start_date = (current_time - timedelta(days=7)).strftime("%Y-%m-%d")
+                    start_date = (current_time - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
                 else:
-                    start_date = (current_time - timedelta(days=60)).strftime("%Y-%m-%d")
+                    start_date = (current_time - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')
                 
                 # end_date = current_time.strftime("%Y-%m-%d")
-                end_date = (current_time + timedelta(days=1)).strftime("%Y-%m-%d")
+                end_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
                 
                 print(f"📥 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Fetching {interval} data for {symbol}")
                 
-                data = self.data_fetcher.fetch_data(symbol, start_date, end_date, interval=interval)
+                data = self.data_fetcher.fetch_historical_data(symbol, start_date, end_date, interval=interval)
                 # ignore last tick of data, as tick not yet closed
                 data = data.iloc[:-1]
+
+                # Filter for market hours only
+                # print(f"\n🕒 Filtering for market hours (9:15 AM - 3:30 PM IST)...")
+                # data = filter_market_hours(data)
                 
                 if not data.empty:
                     print(f"✅ Successfully fetched {len(data)} data points")
@@ -609,7 +659,7 @@ def main():
     st.sidebar.header("📊 Configuration")
     
     # Symbol and data settings
-    symbol = st.sidebar.text_input("Symbol", value="BTC-USD")
+    symbol = st.sidebar.text_input("Symbol", value="BTCUSDT")
     
     interval = st.sidebar.selectbox(
         "Data Interval",

@@ -9,25 +9,13 @@ import logging
 from datetime import datetime, timedelta
 import pandas as pd
 from data_fetcher import KiteDataFetcher
+import config as cfg
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Your Kite Connect API credentials
-API_KEY = "wu80p2aelj2d73v5"
-API_SECRET = "xorznn9fcocx1xww4uflrqprsorrij4t"
 
-# Your Zerodha login credentials (for automated authentication)
-USERNAME = "KMX177"  # Replace with your actual username
-PASSWORD = "Jack298!"  # Replace with your actual password
-TOTP_KEY = "N6RGEW7E5VBDTGBLFOONFU3KOQZGR27G"  # Replace with your actual TOTP key
-
-credentials={"username":USERNAME, 
-             "password" : PASSWORD,
-            "api_key":API_KEY,
-             "api_secret": API_SECRET,
-            "totp_key": TOTP_KEY}
 
 def main():
     """
@@ -36,7 +24,7 @@ def main():
     
     # Initialize the Kite Data Fetcher
     # try:
-    kite_fetcher = KiteDataFetcher(credentials)
+    kite_fetcher = KiteDataFetcher(cfg.KITE_CREDENTIALS)
     kite_fetcher.authenticate()
     logger.info("KiteDataFetcher initialized successfully")
    
@@ -158,24 +146,6 @@ def demo_with_mock_data():
     print(f"Average volume: {sample_data['Volume'].mean():.0f}")
     print(f"Total volume: {sample_data['Volume'].sum():,.0f}")
 
-def setup_credentials():
-    """
-    Interactive setup for credentials
-    """
-    print("\n" + "=" * 60)
-    print("Credential Setup")
-    print("=" * 60)
-    
-    global USERNAME, PASSWORD, TOTP_KEY
-    
-    print("Please enter your Zerodha credentials:")
-    USERNAME = input("Username: ").strip()
-    PASSWORD = input("Password: ").strip()
-    TOTP_KEY = input("TOTP Secret Key: ").strip()
-    
-    print("\nCredentials set successfully!")
-    print(f"Username: {USERNAME}")
-    print(f"TOTP enabled: {'Yes' if TOTP_KEY else 'No'}")
 
 if __name__ == "__main__":
     print("=" * 60)

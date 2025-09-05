@@ -17,7 +17,7 @@ from typing import List, Dict
 
 from strategy_manager import StrategyManager
 from trading_engine import TradingEngine
-from data_fetcher import DataFetcher
+from data_fetcher import DataFetcher, KiteDataFetcher
 from streamlit_components import (
     display_trading_status,
     display_strategy_parameters,
@@ -31,13 +31,54 @@ from streamlit_components import (
     create_strategy_parameter_inputs,
     create_live_trading_chart
 )
+import config as cfg
+
+exchange = "MCX"
+
+def filter_market_hours(data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Filter data to include only market hours for Indian markets.
+    NSE/BSE trading hours: 9:15 AM to 3:30 PM IST (Monday to Friday)
+    
+    Args:
+        data: DataFrame with datetime index
+        
+    Returns:
+        Filtered DataFrame with only market hours
+    """
+    if data.empty:
+        return data
+    
+    # Ensure we have timezone-aware data
+    if data.index.tz is None:
+        data.index = data.index.tz_localize('Asia/Kolkata')
+    else:
+        data.index = data.index.tz_convert('Asia/Kolkata')
+    
+    # Filter for market hours (9:15 AM to 3:30 PM IST)
+    market_hours = data.between_time('09:15', '15:30')
+    
+    # Filter for weekdays only (Monday=0, Sunday=6)
+    weekdays = market_hours[market_hours.index.weekday < 5]
+    
+    print(f"Filtered data from {len(data)} to {len(weekdays)} records (market hours only)")
+    
+    return weekdays
+
+def setup_kite_credentials():
+    """
+    Setup Kite Connect credentials.
+    In production, these should be loaded from environment variables or config files.
+    """
+    
+    return cfg.KITE_CREDENTIALS
 
 def calculate_next_tick_time(interval: str, current_time: datetime = None) -> datetime:
     """
     Calculate the next tick time based on the interval.
     
     Args:
-        interval: Data interval (e.g., "5m", "15m", "30m", "1h", "1d")
+        interval: Data interval (e.g., "5minute", "15minute", "30minute", "60minute", "1h", "1d")
         current_time: Current time (defaults to now)
         
     Returns:
@@ -50,10 +91,10 @@ def calculate_next_tick_time(interval: str, current_time: datetime = None) -> da
     interval_minutes = {
         "1m": 1,
         "2m": 2,
-        "5m": 5,
-        "15m": 15,
-        "30m": 30,
-        "60m": 60,
+        "5minute": 5,
+        "15minute": 15,
+        "30minute": 30,
+        "60minute": 60,
         "1h": 60,
         "1d": 1440,  # 24 * 60
         "1wk": 10080,  # 7 * 24 * 60
@@ -66,7 +107,7 @@ def calculate_next_tick_time(interval: str, current_time: datetime = None) -> da
     minutes = interval_minutes[interval]
     
     # For intraday intervals, calculate next tick based on market hours
-    if interval in ["1m", "2m", "5m", "15m", "30m", "60m", "1h"]:
+    if interval in ["1m", "2m", "5minute", "15minute", "30minute", "60minute", "1h"]:
         # Market hours: 9:30 AM - 4:00 PM ET (simplified)
         # For now, we'll assume 24/7 trading for crypto
         # Calculate the next tick time
@@ -127,7 +168,18 @@ class SimplifiedLiveTradingSimulator:
     def __init__(self, initial_balance: float = 10000):
         self.strategy_manager = StrategyManager()
         self.trading_engine = TradingEngine(initial_balance)
-        self.data_fetcher = DataFetcher()
+        # self.data_fetcher = DataFetcher()
+
+        # Setup Kite credentials
+        credentials = setup_kite_credentials()
+        
+        # Initialize Kite data fetcher
+        self.data_fetcher = KiteDataFetcher(credentials, cfg.KITE_EXCHANGE)
+        
+        # Authenticate with Kite
+        print("\n🔐 Authenticating with Kite Connect...")
+        self.data_fetcher.authenticate()
+        print("✅ Authentication successful!")
         
         # Trading state
         self.is_running = False
@@ -156,7 +208,7 @@ class SimplifiedLiveTradingSimulator:
                         symbol: str,
                         start_date: str = None,
                         end_date: str = None,
-                        interval: str = "15m",
+                        interval: str = "15minute",
                         enabled_strategies: List[str] = None,
                         ma_params: Dict = None,
                         rsi_params: Dict = None,
@@ -335,9 +387,9 @@ class SimplifiedLiveTradingSimulator:
         # end_date = datetime.now().strftime("%Y-%m-%d")
         end_date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
         
-        if interval in ["5m", "15m", "30m", "1h"]:
+        if interval in ["5minute", "15minute", "30minute", "1h"]:
             # For intraday data, fetch more historical data
-            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
         else:
             # For daily data, fetch more historical data
             start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
@@ -345,8 +397,14 @@ class SimplifiedLiveTradingSimulator:
         print(f"📥 Fetching historical data from {start_date} to {end_date}")
         
         # Fetch all historical data
-        data = self.data_fetcher.fetch_data(symbol, start_date, end_date, interval=interval)
+        data = self.data_fetcher.fetch_historical_data(symbol, start_date, end_date, interval=interval)
         
+        # Filter for market hours only
+        # print(f"\n🕒 Filtering for market hours (9:15 AM - 3:30 PM IST)...")
+        # data = filter_market_hours(data)
+
+
+
         if data.empty:
             print(f"❌ No data fetched for {symbol}")
             return
@@ -354,13 +412,13 @@ class SimplifiedLiveTradingSimulator:
         print(f"✅ Fetched {len(data)} data points")
         
         # Calculate the mock start point (mock_days_back from the end)
-        if interval in ["5m", "15m", "30m", "1h"]:
+        if interval in ["5minute", "15minute", "30minute", "1h"]:
             # For intraday, calculate approximate data points
-            if interval == "5m":
+            if interval == "5minute":
                 points_per_day = 288  # 24 * 12
-            elif interval == "15m":
+            elif interval == "15minute":
                 points_per_day = 96   # 24 * 4
-            elif interval == "30m":
+            elif interval == "30minute":
                 points_per_day = 48   # 24 * 2
             elif interval == "1h":
                 points_per_day = 24   # 24 * 1
@@ -402,7 +460,7 @@ class SimplifiedLiveTradingSimulator:
                 print(f"🕐 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}]")
                         
                 # Calculate date range for data fetching
-                if interval in ["5m", "15m", "30m", "1h"]:
+                if interval in ["5minute", "15minute", "30minute", "1h"]:
                     start_date = (current_time - timedelta(days=7)).strftime("%Y-%m-%d")
                 else:
                     start_date = (current_time - timedelta(days=60)).strftime("%Y-%m-%d")
@@ -412,9 +470,13 @@ class SimplifiedLiveTradingSimulator:
                 
                 print(f"📥 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Fetching {interval} data for {symbol}")
                 
-                data = self.data_fetcher.fetch_data(symbol, start_date, end_date, interval=interval)
+                data = self.data_fetcher.fetch_historical_data(symbol, start_date, end_date, interval=interval)
                 # ignore last tick of data, as tick not yet closed
                 data = data.iloc[:-1]
+
+                # Filter for market hours only
+                # print(f"\n🕒 Filtering for market hours (9:15 AM - 3:30 PM IST)...")
+                # data = filter_market_hours(data)
                 
                 if not data.empty:
                     print(f"✅ Successfully fetched {len(data)} data points")
@@ -609,11 +671,11 @@ def main():
     st.sidebar.header("📊 Configuration")
     
     # Symbol and data settings
-    symbol = st.sidebar.text_input("Symbol", value="BTC-USD")
+    symbol = st.sidebar.text_input("Symbol", value="TATAMOTORS")
     
     interval = st.sidebar.selectbox(
         "Data Interval",
-        options=["1d", "5m", "15m", "30m", "1h"],
+        options=["1d", "5minute", "15minute", "30minute", "1h"],
         index=2,
         help="Select the timeframe for live data polling"
     )

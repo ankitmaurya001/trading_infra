@@ -7,6 +7,9 @@ pandas-datareader>=0.10.0
 # Kite Connect for Zerodha
 kiteconnect>=4.0.0
 
+# Binance API for cryptocurrency data
+python-binance>=1.0.19
+
 # HTTP requests for automated authentication
 requests>=2.25.0
 

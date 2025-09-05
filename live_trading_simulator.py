@@ -266,8 +266,19 @@ class LiveTradingSimulator:
                     print(f"✅ [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Successfully fetched {len(data)} data points")
                     print(f"📊 Latest data: {data.index[-1]} - Close: ${data['Close'].iloc[-1]:.2f}")
                     
-                    # Save data to CSV
-                    self._save_data_to_csv(data, current_time)
+                    # Save only new data points to CSV (not the entire historical dataset)
+                    if hasattr(self, 'last_processed_timestamp') and self.last_processed_timestamp is not None:
+                        # Get only data points after the last processed timestamp
+                        new_data = data[data.index > self.last_processed_timestamp]
+                    else:
+                        # First time - save all data
+                        new_data = data
+                    
+                    if not new_data.empty:
+                        self._save_data_to_csv(new_data, current_time)
+                    
+                    # Update the last processed timestamp
+                    self.last_processed_timestamp = data.index[-1]
                     
                     self.current_data = data
                     self.last_update = current_time
@@ -308,8 +319,9 @@ class LiveTradingSimulator:
                 print(f"🎭 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Processing mock data point {self.mock_current_index + 1}/{len(self.mock_data)} ({progress:.1f}%)")
                 print(f"📊 Mock data: {current_time} - Close: ${current_data_point['Close']:.2f}")
                 
-                # Save data to CSV
-                self._save_data_to_csv(data, current_time)
+                # Save only the new data point to CSV (not the entire historical dataset)
+                new_data_point = pd.DataFrame([current_data_point])
+                self._save_data_to_csv(new_data_point, current_time)
                 
                 self.current_data = data
                 self.last_update = current_time

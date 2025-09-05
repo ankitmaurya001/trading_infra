@@ -104,7 +104,7 @@ class TradingEngine:
         trade = {
             'id': len(self.trade_history) + 1,
             'strategy': strategy.name,
-            'action': action,
+            'action': action, # BUY, SELL, EXIT
             'entry_price': price,
             'entry_time': timestamp,
             'quantity': quantity,
@@ -588,7 +588,7 @@ class TradingEngine:
                 'symbol': self.symbol,
                 'strategy': strategy.name,
                 'signal': signal,
-                'signal_name': signal_name,
+                'signal_name': signal_name, # HOLD, LONG_ENTRY, SHORT_ENTRY, LONG_EXIT, SHORT_EXIT
                 'current_price': current_price,
                 'current_balance': self.current_balance,
                 'active_trades_count': active_trades_count,

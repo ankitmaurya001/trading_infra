@@ -651,6 +651,12 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
     if current_data.empty:
         return None
     
+    # Create a continuous index to remove gaps between trading sessions
+    # This makes the chart look like TradingView with no gaps
+    data_with_continuous_index = current_data.copy()
+    data_with_continuous_index['continuous_index'] = range(len(data_with_continuous_index))
+    continuous_index = data_with_continuous_index['continuous_index']
+    
     # Create figure with subplots
     fig = make_subplots(
         rows=3, cols=1,
@@ -661,10 +667,10 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
         specs=[[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": False}]]
     )
     
-    # Add OHLC candlestick chart
+    # Add OHLC candlestick chart with continuous index
     fig.add_trace(
         go.Candlestick(
-            x=current_data.index,
+            x=continuous_index,
             open=current_data['Open'],
             high=current_data['High'],
             low=current_data['Low'],
@@ -699,17 +705,18 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
     
     fig.add_trace(
         go.Bar(
-            x=current_data.index,
+            x=continuous_index,
             y=current_data['Volume'],
             name='Volume',
             marker_color=colors,
             opacity=0.7,
             hovertemplate=(
                 "<b>Volume</b><br>" +
-                "Date: %{x}<br>" +
+                "Date: %{customdata}<br>" +
                 "Volume: %{y:,.0f}<br>" +
                 "<extra></extra>"
-            )
+            ),
+            customdata=current_data.index
         ),
         row=2, col=1
     )
@@ -748,16 +755,17 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                 # Short MA
                 fig.add_trace(
                     go.Scatter(
-                        x=current_data.index,
+                        x=continuous_index,
                         y=strategy_data['SMA_short'],
                         name=f'{strategy.name} - Short MA',
                         line=dict(color=strategy_colors[i % len(strategy_colors)], width=2),
                         hovertemplate=(
                             "<b>Short MA</b><br>" +
-                            "Date: %{x}<br>" +
+                            "Date: %{customdata}<br>" +
                             "Value: $%{y:.2f}<br>" +
                             "<extra></extra>"
-                        )
+                        ),
+                        customdata=current_data.index
                     ),
                     row=1, col=1
                 )
@@ -765,16 +773,17 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                 # Long MA
                 fig.add_trace(
                     go.Scatter(
-                        x=current_data.index,
+                        x=continuous_index,
                         y=strategy_data['SMA_long'],
                         name=f'{strategy.name} - Long MA',
                         line=dict(color=strategy_colors[(i + 1) % len(strategy_colors)], width=2),
                         hovertemplate=(
                             "<b>Long MA</b><br>" +
-                            "Date: %{x}<br>" +
+                            "Date: %{customdata}<br>" +
                             "Value: $%{y:.2f}<br>" +
                             "<extra></extra>"
-                        )
+                        ),
+                        customdata=current_data.index
                     ),
                     row=1, col=1
                 )
@@ -785,16 +794,17 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                 # RSI line
                 fig.add_trace(
                     go.Scatter(
-                        x=current_data.index,
+                        x=continuous_index,
                         y=strategy_data['RSI'],
                         name=f'{strategy.name} - RSI',
                         line=dict(color=strategy_colors[i % len(strategy_colors)], width=2),
                         hovertemplate=(
                             "<b>RSI</b><br>" +
-                            "Date: %{x}<br>" +
+                            "Date: %{customdata}<br>" +
                             "Value: %{y:.2f}<br>" +
                             "<extra></extra>"
-                        )
+                        ),
+                        customdata=current_data.index
                     ),
                     row=3, col=1
                 )
@@ -802,7 +812,7 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                 # Overbought line
                 fig.add_trace(
                     go.Scatter(
-                        x=current_data.index,
+                        x=continuous_index,
                         y=[strategy.overbought] * len(current_data),
                         name=f'{strategy.name} - Overbought',
                         line=dict(color='#F44336', dash='dash', width=1),
@@ -819,7 +829,7 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                 # Oversold line
                 fig.add_trace(
                     go.Scatter(
-                        x=current_data.index,
+                        x=continuous_index,
                         y=[strategy.oversold] * len(current_data),
                         name=f'{strategy.name} - Oversold',
                         line=dict(color='#4CAF50', dash='dash', width=1),
@@ -836,9 +846,11 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
         # Add buy signals
         buy_signals = strategy_data[strategy_data['Signal'] == 1]
         if not buy_signals.empty:
+            # Get continuous indices for buy signals
+            buy_continuous_indices = [data_with_continuous_index.loc[idx, 'continuous_index'] for idx in buy_signals.index]
             fig.add_trace(
                 go.Scatter(
-                    x=buy_signals.index,
+                    x=buy_continuous_indices,
                     y=buy_signals['Close'],
                     mode='markers',
                     marker=dict(
@@ -850,10 +862,11 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                     name=f'{strategy.name} - Buy Signal',
                     hovertemplate=(
                         f"<b>{strategy.name} Buy Signal</b><br>" +
-                        "Date: %{x}<br>" +
+                        "Date: %{customdata}<br>" +
                         "Price: $%{y:.2f}<br>" +
                         "<extra></extra>"
-                    )
+                    ),
+                    customdata=buy_signals.index
                 ),
                 row=1, col=1
             )
@@ -861,9 +874,11 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
         # Add sell signals
         sell_signals = strategy_data[strategy_data['Signal'] == -1]
         if not sell_signals.empty:
+            # Get continuous indices for sell signals
+            sell_continuous_indices = [data_with_continuous_index.loc[idx, 'continuous_index'] for idx in sell_signals.index]
             fig.add_trace(
                 go.Scatter(
-                    x=sell_signals.index,
+                    x=sell_continuous_indices,
                     y=sell_signals['Close'],
                     mode='markers',
                     marker=dict(
@@ -875,10 +890,11 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                     name=f'{strategy.name} - Sell Signal',
                     hovertemplate=(
                         f"<b>{strategy.name} Sell Signal</b><br>" +
-                        "Date: %{x}<br>" +
+                        "Date: %{customdata}<br>" +
                         "Price: $%{y:.2f}<br>" +
                         "<extra></extra>"
-                    )
+                    ),
+                    customdata=sell_signals.index
                 ),
                 row=1, col=1
             )
@@ -893,10 +909,24 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
     
     # Add trade markers if we have trades
     if not all_trades.empty:
+        # Helper function to convert datetime to continuous index
+        def get_continuous_index_for_datetime(dt):
+            try:
+                # Find the closest datetime in our data
+                closest_idx = current_data.index.get_indexer([dt], method='nearest')[0]
+                if closest_idx >= 0:
+                    return data_with_continuous_index.iloc[closest_idx]['continuous_index']
+                return 0
+            except:
+                return 0
+        
+        # Convert trade times to continuous indices
+        entry_continuous_indices = [get_continuous_index_for_datetime(dt) for dt in all_trades['entry_time']]
+        
         # Entry points
         fig.add_trace(
             go.Scatter(
-                x=all_trades['entry_time'],
+                x=entry_continuous_indices,
                 y=all_trades['entry_price'],
                     mode='markers',
                     marker=dict(
@@ -911,14 +941,15 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                     "Trade ID: %{customdata[0]}<br>" +
                     "Type: %{customdata[1]}<br>" +
                     "Status: %{customdata[2]}<br>" +
-                    "Date: %{x}<br>" +
+                    "Date: %{customdata[3]}<br>" +
                     "Price: $%{y:.2f}<br>" +
                     "<extra></extra>"
                 ),
                 customdata=list(zip(
                     all_trades['trade_id'],
                     all_trades['action'],
-                    all_trades['status']
+                    all_trades['status'],
+                    all_trades['entry_time']
                 ))
             ),
             row=1, col=1
@@ -927,9 +958,10 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
         # Open trades (different marker style)
         open_trades = all_trades[all_trades['status'] == 'open']
         if not open_trades.empty:
+            open_entry_continuous_indices = [get_continuous_index_for_datetime(dt) for dt in open_trades['entry_time']]
             fig.add_trace(
                 go.Scatter(
-                    x=open_trades['entry_time'],
+                    x=open_entry_continuous_indices,
                     y=open_trades['entry_price'],
                     mode='markers',
                     marker=dict(
@@ -944,14 +976,15 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                         "Trade ID: %{customdata[0]}<br>" +
                         "Type: %{customdata[1]}<br>" +
                         "Status: %{customdata[2]}<br>" +
-                        "Date: %{x}<br>" +
+                        "Date: %{customdata[3]}<br>" +
                         "Price: $%{y:.2f}<br>" +
                         "<extra></extra>"
                     ),
                     customdata=list(zip(
                         open_trades['trade_id'],
                         open_trades['action'],
-                        open_trades['status']
+                        open_trades['status'],
+                        open_trades['entry_time']
                     ))
                 ),
                 row=1, col=1
@@ -960,9 +993,10 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
         # Exit points (only for completed trades)
         completed_trades = all_trades[all_trades['status'] == 'completed']
         if not completed_trades.empty:
+            exit_continuous_indices = [get_continuous_index_for_datetime(dt) for dt in completed_trades['exit_time']]
             fig.add_trace(
                 go.Scatter(
-                    x=completed_trades['exit_time'],
+                    x=exit_continuous_indices,
                     y=completed_trades['exit_price'],
                 mode='markers',
                 marker=dict(
@@ -977,14 +1011,15 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                     "Trade ID: %{customdata[0]}<br>" +
                     "Type: %{customdata[1]}<br>" +
                     "Exit Reason: %{customdata[2]}<br>" +
-                    "Date: %{x}<br>" +
+                    "Date: %{customdata[3]}<br>" +
                     "Price: $%{y:.2f}<br>" +
                     "<extra></extra>"
                 ),
                 customdata=list(zip(
                     completed_trades['trade_id'],
                     completed_trades['action'],
-                    completed_trades['exit_reason']
+                    completed_trades['exit_reason'],
+                    completed_trades['exit_time']
                 ))
             ),
             row=1, col=1
@@ -993,9 +1028,11 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
         
         # Add trade lines connecting entry to exit (only for completed trades)
         for _, trade in completed_trades.iterrows():
+            entry_continuous_idx = get_continuous_index_for_datetime(trade['entry_time'])
+            exit_continuous_idx = get_continuous_index_for_datetime(trade['exit_time'])
             fig.add_trace(
                 go.Scatter(
-                    x=[trade['entry_time'], trade['exit_time']],
+                    x=[entry_continuous_idx, exit_continuous_idx],
                     y=[trade['entry_price'], trade['exit_price']],
                     mode='lines',
                     line=dict(
@@ -1020,10 +1057,14 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
     if active_trade_info and current_data is not None and not current_data.empty:
         current_price = current_data['Close'].iloc[-1]
         
+        # Get continuous indices for active trade
+        active_entry_continuous_idx = get_continuous_index_for_datetime(active_trade_info['entry_time'])
+        current_continuous_idx = len(continuous_index) - 1  # Last index
+        
         # Active trade entry point
         fig.add_trace(
             go.Scatter(
-                x=[active_trade_info['entry_time']],
+                x=[active_entry_continuous_idx],
                 y=[active_trade_info['entry_price']],
                 mode='markers',
                 marker=dict(
@@ -1048,7 +1089,7 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
         # Current price line for active trade
         fig.add_trace(
             go.Scatter(
-                x=[active_trade_info['entry_time'], current_data.index[-1]],
+                x=[active_entry_continuous_idx, current_continuous_idx],
                 y=[active_trade_info['entry_price'], current_price],
                 mode='lines',
                 line=dict(
@@ -1069,7 +1110,7 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
         # Current price marker
         fig.add_trace(
             go.Scatter(
-                x=[current_data.index[-1]],
+                x=[current_continuous_idx],
                 y=[current_price],
                 mode='markers',
                 marker=dict(
@@ -1154,14 +1195,36 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
         title_font=dict(color='white')
     )
     
-    # Update x-axis
+    # Update x-axis with proper time handling to remove gaps
+    # Create custom tick labels that show actual datetime but use continuous index
+    tick_interval = max(1, len(continuous_index) // 10)  # Show about 10 ticks
+    tick_positions = list(range(0, len(continuous_index), tick_interval))
+    tick_labels = [current_data.index[i].strftime('%m/%d %H:%M') for i in tick_positions]
+    
     fig.update_xaxes(
         title_text="Date", 
         row=3, col=1,
         gridcolor='rgba(255,255,255,0.1)',
         zeroline=False,
         tickfont=dict(color='white'),
-        title_font=dict(color='white')
+        title_font=dict(color='white'),
+        # Remove gaps between trading sessions
+        rangeslider=dict(visible=False),
+        tickmode='array',
+        tickvals=tick_positions,
+        ticktext=tick_labels
+    )
+    
+    # Update all x-axes to remove gaps
+    fig.update_xaxes(
+        rangeslider=dict(visible=False),
+        gridcolor='rgba(255,255,255,0.1)',
+        zeroline=False,
+        tickfont=dict(color='white'),
+        title_font=dict(color='white'),
+        tickmode='array',
+        tickvals=tick_positions,
+        ticktext=tick_labels
     )
     
     return fig
