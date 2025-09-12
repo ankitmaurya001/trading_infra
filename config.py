@@ -17,4 +17,4 @@ KITE_CREDENTIALS={"username":KITE_USERNAME,
              "api_secret": KITE_API_SECRET,
             "totp_key": KITE_TOTP_KEY}
 
-KITE_EXCHANGE = "MCX"
+KITE_EXCHANGE = "NSE"

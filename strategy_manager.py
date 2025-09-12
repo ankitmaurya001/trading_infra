@@ -227,9 +227,13 @@ class StrategyManager:
         """
         self.strategies = []
         
+        print(f"🔍 Initializing strategies: {enabled_strategies}")
+        print(f"🔍 Available optimized_params: {list(self.optimized_params.keys())}")
+        
         for strategy_name in enabled_strategies:
             if strategy_name not in self.optimized_params:
                 print(f"⚠️  No parameters found for {strategy_name}, skipping...")
+                print(f"🔍 Available params: {list(self.optimized_params.keys())}")
                 continue
             
             params = self.optimized_params[strategy_name]

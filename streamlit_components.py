@@ -142,7 +142,9 @@ def display_trading_status(status: Dict, simulator=None):
     
     with status_col1:
         status_text = "🟢 Running" if status['is_running'] else "🔴 Stopped"
-        if status['is_running'] and simulator and simulator.mock_mode:
+        if status['is_running'] and simulator and hasattr(simulator, 'mock_mode') and simulator.mock_mode:
+            status_text += " (Mock)"
+        elif status['is_running'] and status.get('mock_mode', False):
             status_text += " (Mock)"
         st.metric("Status", status_text)
     
@@ -166,7 +168,14 @@ def display_trading_status(status: Dict, simulator=None):
             if 'quantity' in trade_info:
                 st.caption(f"Qty: {trade_info['quantity']:.4f}")
             if 'entry_time' in trade_info:
-                st.caption(f"Time: {trade_info['entry_time'].strftime('%H:%M:%S')}")
+                entry_time = trade_info['entry_time']
+                # Handle both string and datetime objects
+                if isinstance(entry_time, str):
+                    # If it's a string, just display it as is or format it
+                    st.caption(f"Time: {entry_time}")
+                else:
+                    # If it's a datetime object, format it
+                    st.caption(f"Time: {entry_time.strftime('%H:%M:%S')}")
         elif status['active_trades'] == 0 and status.get('can_trade', True):
             st.caption("✅ Ready to trade")
         elif status['active_trades'] == 0 and not status.get('can_trade', True):
@@ -609,7 +618,13 @@ def display_decision_log_summary(decision_log_df: pd.DataFrame):
                 'HOLD': '⚪'
             }.get(row['signal_name'], '❓')
             
-            st.write(f"{signal_color} **{row['strategy']}** - {row['signal_name']} @ ${row['current_price']:.2f} ({row['timestamp'].strftime('%H:%M:%S')})")
+            # Handle timestamp formatting
+            timestamp = row['timestamp']
+            if isinstance(timestamp, str):
+                time_str = timestamp
+            else:
+                time_str = timestamp.strftime('%H:%M:%S')
+            st.write(f"{signal_color} **{row['strategy']}** - {row['signal_name']} @ ${row['current_price']:.2f} ({time_str})")
 
 def display_log_files_info(log_info: Dict):
     """

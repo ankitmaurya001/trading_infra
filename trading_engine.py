@@ -45,24 +45,30 @@ class TradingEngine:
         self.total_pnl = 0
         self.unrealized_pnl = 0
         
-    def setup_logging(self, session_id: str, symbol: str):
+    def setup_logging(self, session_id: str, symbol: str, session_folder: str = None):
         """
         Setup logging files for the trading session.
         
         Args:
             session_id: Unique session identifier
             symbol: Trading symbol
+            session_folder: Path to session-specific folder (optional)
         """
         self.session_id = session_id
         self.symbol = symbol
         
-        # Create logs directory
-        os.makedirs("logs", exist_ok=True)
+        # Use session folder if provided, otherwise use default logs directory
+        if session_folder:
+            self.session_folder = session_folder
+            os.makedirs(session_folder, exist_ok=True)
+        else:
+            self.session_folder = "logs"
+            os.makedirs(self.session_folder, exist_ok=True)
         
-        # Setup log files
-        self.trade_log_file = f"logs/live_trades_{session_id}.csv"
-        self.decision_log_file = f"logs/live_decisions_{session_id}.csv"
-        self.data_log_file = f"logs/live_data_{session_id}.csv"
+        # Setup log files in session folder
+        self.trade_log_file = os.path.join(self.session_folder, "trades.csv")
+        self.decision_log_file = os.path.join(self.session_folder, "decisions.csv")
+        self.data_log_file = os.path.join(self.session_folder, "market_data.csv")
         
         # Initialize trade log
         trade_log_df = pd.DataFrame(columns=[
