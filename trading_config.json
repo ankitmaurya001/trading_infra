@@ -5,7 +5,7 @@
     "initial_balance": 10000,
     "mock_mode": false,
     "mock_days_back": 10,
-    "mock_delay": 0.01,
+    "mock_delay": 0,
     "enabled_strategies": [
         "ma"
     ],

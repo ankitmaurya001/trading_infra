@@ -11,6 +11,7 @@ import time
 import threading
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
+import pytz
 from plotly.subplots import make_subplots
 import os
 import json
@@ -496,8 +497,17 @@ class LiveTradingSimulator:
     def _log_trade(self, trade, price, timestamp, is_exit=False):
         """Log trade to CSV file"""
         if self.trade_log_file:
+            # Convert timestamp to IST timezone to match decision logs
+            ist = pytz.timezone('Asia/Kolkata')
+            if timestamp.tzinfo is None:
+                # If no timezone info, assume UTC and convert to IST
+                timestamp_ist = pytz.utc.localize(timestamp).astimezone(ist)
+            else:
+                # If already has timezone, convert to IST
+                timestamp_ist = timestamp.astimezone(ist)
+            
             log_entry = {
-                'timestamp': timestamp,
+                'timestamp': timestamp_ist,
                 'symbol': self.symbol,
                 'strategy': trade['strategy'],
                 'action': 'EXIT' if is_exit else trade['action'],
@@ -553,8 +563,17 @@ class LiveTradingSimulator:
                     trade_status = trade.get('status', 'open')
                     break
             
+            # Convert timestamp to IST timezone to match market data
+            ist = pytz.timezone('Asia/Kolkata')
+            if current_time.tzinfo is None:
+                # If no timezone info, assume UTC and convert to IST
+                current_time_ist = pytz.utc.localize(current_time).astimezone(ist)
+            else:
+                # If already has timezone, convert to IST
+                current_time_ist = current_time.astimezone(ist)
+            
             log_entry = {
-                'timestamp': current_time,
+                'timestamp': current_time_ist,
                 'symbol': self.symbol,
                 'strategy': strategy.name,
                 'signal': signal,
