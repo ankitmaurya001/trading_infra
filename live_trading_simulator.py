@@ -722,13 +722,15 @@ class LiveTradingSimulator:
         win_rate = len(winning_trades) / total_trades if total_trades > 0 else 0
         avg_return = closed_trades['pnl'].mean() if total_trades > 0 else 0
         
-        # Calculate total PnL using compounding
+        # Calculate total PnL based on actual balance change
+        # This matches the actual balance progression in the system
+        total_pnl = (self.current_balance - self.initial_balance) / self.initial_balance
+        
+        # Geometric mean return (average return per trade)
+        # Calculate using compounding of individual trade returns
         total_multiplier = 1.0
         for _, trade in closed_trades.iterrows():
             total_multiplier *= (1 + trade['pnl'])
-        total_pnl = total_multiplier - 1.0
-        
-        # Geometric mean return
         geometric_mean_return = (total_multiplier ** (1.0 / total_trades)) - 1.0 if total_trades > 0 else 0
         
         # Win/Loss metrics
@@ -1484,8 +1486,11 @@ def main():
         current_balance = initial_balance
         for _, trade in sorted_trades.iterrows():
             # Calculate the actual dollar profit/loss for this trade
-            position_value = trade['quantity'] * trade['entry_price']
-            trade_profit_loss = position_value * trade['pnl']  # Convert percentage to dollars
+            # PnL percentage is already calculated based on margin used
+            leverage = trade.get('leverage', 1.0)
+            position_size = trade.get('position_size', trade['quantity'] * trade['entry_price'])
+            margin_used = position_size / leverage
+            trade_profit_loss = margin_used * trade['pnl']  # Correct calculation
             
             # Update balance with this trade's profit/loss
             current_balance += trade_profit_loss

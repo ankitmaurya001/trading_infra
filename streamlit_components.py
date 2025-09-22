@@ -392,8 +392,11 @@ def create_performance_chart(trade_history_df: pd.DataFrame, initial_balance: fl
     current_balance = initial_balance
     for _, trade in sorted_trades.iterrows():
         # Calculate the actual dollar profit/loss for this trade
-        position_value = trade['quantity'] * trade['entry_price']
-        trade_profit_loss = position_value * trade['pnl']  # Convert percentage to dollars
+        # PnL percentage is already calculated based on margin used
+        leverage = trade.get('leverage', 1.0)
+        position_size = trade.get('position_size', trade['quantity'] * trade['entry_price'])
+        margin_used = position_size / leverage
+        trade_profit_loss = margin_used * trade['pnl']  # Correct calculation
         
         # Update balance with this trade's profit/loss
         current_balance += trade_profit_loss

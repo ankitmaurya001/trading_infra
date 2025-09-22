@@ -29,9 +29,11 @@ class TradingEngine:
     - Logging and reporting
     """
     
-    def __init__(self, initial_balance: float = 10000):
+    def __init__(self, initial_balance: float = 10000, max_leverage: float = 10.0, max_loss_percent: float = 2.0):
         self.initial_balance = initial_balance
         self.current_balance = initial_balance
+        self.max_leverage = max_leverage
+        self.max_loss_percent = max_loss_percent
         self.trade_history = []
         self.active_trades = []
         self.session_id = None
@@ -74,7 +76,7 @@ class TradingEngine:
         # Initialize trade log
         trade_log_df = pd.DataFrame(columns=[
             'timestamp', 'symbol', 'strategy', 'action', 'price', 'quantity', 
-            'balance', 'pnl', 'trade_id', 'status'
+            'leverage', 'position_size', 'atr', 'balance', 'pnl', 'trade_id', 'status'
         ])
         trade_log_df.to_csv(self.trade_log_file, index=False)
         
@@ -90,22 +92,47 @@ class TradingEngine:
         print(f"   Decision Log: {self.decision_log_file}")
         print(f"   Data Log: {self.data_log_file}")
     
-    def execute_trade(self, strategy: BaseStrategy, action: str, price: float, timestamp: datetime) -> Dict:
+    def execute_trade(self, strategy: BaseStrategy, action: str, price: float, timestamp: datetime, data: pd.DataFrame = None) -> Dict:
         """
-        Execute a new trade.
+        Execute a new trade with leverage-based position sizing.
         
         Args:
             strategy: Strategy instance that generated the signal
             action: Trade action ('BUY' or 'SELL')
             price: Execution price
             timestamp: Trade timestamp
+            data: Market data for ATR calculation
             
         Returns:
             Dictionary containing trade details
         """
-        # Calculate position size (use full available balance for maximum compounding)
-        position_size = self.current_balance
-        quantity = position_size / price
+        # Determine position type based on action
+        from strategies import PositionType
+        if action == 'BUY':
+            position_type = PositionType.LONG
+        elif action == 'SELL':
+            position_type = PositionType.SHORT
+        else:
+            raise ValueError(f"Invalid action: {action}")
+        
+        # Calculate ATR for leverage-based position sizing
+        if data is not None and not data.empty:
+            atr_series = strategy.calculate_atr(data)
+            current_atr = float(atr_series.iloc[-1]) if not atr_series.empty else price * 0.01
+        else:
+            # Fallback to 1% of price if no data available
+            current_atr = price * 0.01
+            print(f"Warning: No market data available for ATR calculation, using 1% of price: {current_atr}")
+        
+        # Calculate leverage-based position size
+        leverage, position_size, quantity = strategy.calculate_leverage_position_size(
+            entry_price=price,
+            position_type=position_type,
+            atr=current_atr,
+            available_balance=self.current_balance,
+            max_leverage=self.max_leverage,
+            max_loss_percent=self.max_loss_percent
+        )
         
         # Create trade record
         trade = {
@@ -115,12 +142,17 @@ class TradingEngine:
             'entry_price': price,
             'entry_time': timestamp,
             'quantity': quantity,
+            'leverage': leverage,
+            'position_size': position_size,
+            'atr': current_atr,
             'status': 'open',
             'pnl': 0
         }
         
-        # Update balance (all balance is now in the position)
-        self.current_balance = 0
+        # Update balance (subtract the margin requirement, not the full position size)
+        # Margin = position_size / leverage
+        margin_required = position_size / leverage
+        self.current_balance -= margin_required
         
         # Add to active trades
         self.active_trades.append(trade)
@@ -131,7 +163,8 @@ class TradingEngine:
         
         # Print trade execution log
         print(f"🔄 [{timestamp.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - {action} {quantity:.4f} {self.symbol} @ ${price:.2f}")
-        print(f"💰 Position Size: ${position_size:.2f} (Full Balance), New Balance: ${self.current_balance:.2f}")
+        print(f"💰 Position Size: ${position_size:.2f} (Leverage: {leverage:.1f}x), Margin: ${margin_required:.2f}, New Balance: ${self.current_balance:.2f}")
+        print(f"📊 ATR: ${current_atr:.2f}, Max Loss: {self.max_loss_percent}%")
         
         return trade
     
@@ -155,11 +188,20 @@ class TradingEngine:
                 if (position_type == 'LONG' and trade['action'] == 'BUY') or \
                    (position_type == 'SHORT' and trade['action'] == 'SELL'):
                     
-                    # Calculate PnL
+                    # Calculate PnL with leverage
+                    leverage = trade.get('leverage', 1.0)  # Default to 1.0 if leverage not set
+                    position_size = trade.get('position_size', trade['quantity'] * trade['entry_price'])
+                    
                     if trade['action'] == 'BUY':
-                        pnl = (price - trade['entry_price']) / trade['entry_price']
+                        # For LONG positions: profit = (current_price - entry_price) * quantity
+                        dollar_pnl = (price - trade['entry_price']) * trade['quantity']
                     else:
-                        pnl = (trade['entry_price'] - price) / trade['entry_price']
+                        # For SHORT positions: profit = (entry_price - current_price) * quantity
+                        dollar_pnl = (trade['entry_price'] - price) * trade['quantity']
+                    
+                    # Calculate percentage PnL based on margin used (not total position size)
+                    margin_used = position_size / leverage
+                    pnl = dollar_pnl / margin_used if margin_used > 0 else 0
                     
                     # Update trade
                     trade['exit_price'] = price
@@ -179,21 +221,12 @@ class TradingEngine:
                     else:
                         trade['status'] = 'closed'
                     
-                    # Update balance - add back original position value plus profit/loss
-                    original_position_value = trade['quantity'] * trade['entry_price']
+                    # Update balance - add back margin plus profit/loss
+                    # For leveraged trades, we only used margin, not the full position value
+                    margin_used = position_size / leverage
                     
-                    if trade['action'] == 'BUY':
-                        # For LONG positions: profit = current_value - original_value
-                        current_position_value = trade['quantity'] * price
-                        profit_loss = current_position_value - original_position_value
-                    else:
-                        # For SHORT positions: profit = original_value - current_value
-                        # We sold at entry_price, buy back at price
-                        current_position_value = trade['quantity'] * price
-                        profit_loss = original_position_value - current_position_value
-                    
-                    # Add back the original position value plus any profit/loss
-                    self.current_balance += original_position_value + profit_loss
+                    # Add back the margin plus the dollar PnL
+                    self.current_balance += margin_used + dollar_pnl
                     
                     # Remove from active trades
                     self.active_trades.remove(trade)
@@ -204,8 +237,8 @@ class TradingEngine:
                     
                     # Print trade closure log
                     print(f"✅ [{timestamp.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - CLOSED {trade['action']} position")
-                    print(f"📈 PnL: {pnl:.2%} (${profit_loss:.2f})")
-                    print(f"💰 Original Position: ${original_position_value:.2f}, Profit/Loss: ${profit_loss:.2f}")
+                    print(f"📈 PnL: {pnl:.2%} (${dollar_pnl:.2f})")
+                    print(f"💰 Position Size: ${position_size:.2f}, Margin Used: ${margin_used:.2f}, Leverage: {leverage:.1f}x")
                     print(f"💰 New Balance: ${self.current_balance:.2f}")
         
         return closed_trades
@@ -252,12 +285,12 @@ class TradingEngine:
         # Check for entry signals (only if no active trades exist and sufficient balance)
         if latest_signal == Signal.LONG_ENTRY.value and self.current_balance > 0 and len(self.active_trades) == 0:  # Long entry
             print(f"🟢 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - LONG ENTRY signal detected")
-            trade = self.execute_trade(strategy, 'BUY', current_price, current_time)
+            trade = self.execute_trade(strategy, 'BUY', current_price, current_time, data)
             trades_executed.append(trade)
             action_taken = 'LONG_ENTRY'
         elif latest_signal == Signal.SHORT_ENTRY.value and self.current_balance > 0 and len(self.active_trades) == 0:  # Short entry
             print(f"🔴 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - SHORT ENTRY signal detected")
-            trade = self.execute_trade(strategy, 'SELL', current_price, current_time)
+            trade = self.execute_trade(strategy, 'SELL', current_price, current_time, data)
             trades_executed.append(trade)
             action_taken = 'SHORT_ENTRY'
         elif (latest_signal == Signal.LONG_ENTRY.value or latest_signal == Signal.SHORT_ENTRY.value) and len(self.active_trades) > 0:
@@ -387,13 +420,15 @@ class TradingEngine:
         win_rate = len(winning_trades) / total_trades if total_trades > 0 else 0
         avg_return = closed_trades['pnl'].mean() if total_trades > 0 else 0
         
-        # Calculate total PnL using compounding
+        # Calculate total PnL based on actual balance change
+        # This matches the actual balance progression in the system
+        total_pnl = (self.current_balance - self.initial_balance) / self.initial_balance
+        
+        # Geometric mean return (average return per trade)
+        # Calculate using compounding of individual trade returns
         total_multiplier = 1.0
         for _, trade in closed_trades.iterrows():
             total_multiplier *= (1 + trade['pnl'])
-        total_pnl = total_multiplier - 1.0
-        
-        # Geometric mean return
         geometric_mean_return = (total_multiplier ** (1.0 / total_trades)) - 1.0 if total_trades > 0 else 0
         
         # Win/Loss metrics
@@ -550,6 +585,9 @@ class TradingEngine:
                 'action': 'EXIT' if is_exit else trade['action'],
                 'price': price,
                 'quantity': trade['quantity'],
+                'leverage': trade.get('leverage', 1.0),
+                'position_size': trade.get('position_size', trade['quantity'] * price),
+                'atr': trade.get('atr', 0.0),
                 'balance': self.current_balance,
                 'pnl': trade.get('pnl', 0),
                 'trade_id': trade['id'],

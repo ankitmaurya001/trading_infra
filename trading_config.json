@@ -3,7 +3,9 @@
     "interval": "15m",
     "polling_frequency": 60,
     "initial_balance": 10000,
-    "mock_mode": false,
+    "max_leverage": 10,
+    "max_loss_percent": 2.0,
+    "mock_mode": true,
     "mock_days_back": 10,
     "mock_delay": 0,
     "enabled_strategies": [
@@ -11,7 +13,7 @@
     ],
     "ma_params": {
         "short_window": 5,
-        "long_window": 60,
+        "long_window": 40,
         "risk_reward_ratio": 2.0,
         "trading_fee": 0.0
     },

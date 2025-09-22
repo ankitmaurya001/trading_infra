@@ -165,9 +165,9 @@ class SimplifiedLiveTradingSimulator:
     Simplified live trading simulator using modular components.
     """
     
-    def __init__(self, initial_balance: float = 10000):
+    def __init__(self, initial_balance: float = 10000, max_leverage: float = 10.0, max_loss_percent: float = 2.0):
         self.strategy_manager = StrategyManager()
-        self.trading_engine = TradingEngine(initial_balance)
+        self.trading_engine = TradingEngine(initial_balance, max_leverage, max_loss_percent)
         # self.data_fetcher = DataFetcher()
 
         # Setup Kite credentials
@@ -973,7 +973,12 @@ def main():
                     with col4:
                         st.write(f"{trade['entry_time'].strftime('%m/%d %H:%M')} → {trade['exit_time'].strftime('%m/%d %H:%M')}")
                     with col5:
-                        st.write(f"{trade_color} ${trade['pnl'] * trade['quantity'] * trade['entry_price']:.2f}")
+                        # Calculate dollar PnL correctly (avoid double leverage)
+                        leverage = trade.get('leverage', 1.0)
+                        position_size = trade.get('position_size', trade['quantity'] * trade['entry_price'])
+                        margin_used = position_size / leverage
+                        dollar_pnl = trade['pnl'] * margin_used
+                        st.write(f"{trade_color} ${dollar_pnl:.2f}")
         else:
             st.info("No closed trades yet. Performance metrics will appear here once trades are executed.")
     else:

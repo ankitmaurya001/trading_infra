@@ -40,7 +40,11 @@ class KiteTradingEngine:
         
         # Initialize components
         self.strategy_manager = StrategyManager()
-        self.trading_engine = TradingEngine(self.config.get('initial_balance', 10000))
+        self.trading_engine = TradingEngine(
+            initial_balance=self.config.get('initial_balance', 10000),
+            max_leverage=self.config.get('max_leverage', 10.0),
+            max_loss_percent=self.config.get('max_loss_percent', 2.0)
+        )
 
         self.data_fetcher = KiteDataFetcher(
             cfg.KITE_CREDENTIALS, 
@@ -92,6 +96,8 @@ class KiteTradingEngine:
                 "interval": "15minute",
                 "polling_frequency": 60,
                 "initial_balance": 10000,
+                "max_leverage": 10,
+                "max_loss_percent": 2.0,
                 "mock_mode": False,
                 "mock_days_back": 10,
                 "mock_delay": 0.01,

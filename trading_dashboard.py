@@ -256,6 +256,9 @@ class TradingDashboard:
                 'entry_time': entry_record['timestamp'],
                 'entry_price': entry_record['price'],
                 'quantity': entry_record['quantity'],
+                'leverage': entry_record.get('leverage', 1.0),
+                'position_size': entry_record.get('position_size', entry_record['quantity'] * entry_record['price']),
+                'atr': entry_record.get('atr', 0.0),
                 'exit_time': exit_record['timestamp'],
                 'exit_price': exit_record['price'],
                 'exit_status': exit_record['status'],
@@ -366,7 +369,11 @@ class TradingDashboard:
         print(f"   Losing trades: {losing_trades}")
         print(f"   Win rate: {win_rate:.2%}")
         
-        total_pnl = closed_trades['pnl'].sum()
+        # Calculate total PnL based on actual balance change from status data
+        # This matches the actual balance progression in the system
+        current_balance = self.status_data.get('current_balance', 10000)
+        initial_balance = self.status_data.get('initial_balance', 10000)
+        total_pnl = (current_balance - initial_balance) / initial_balance
         avg_win = closed_trades[closed_trades['pnl'] > 0]['pnl'].mean() if winning_trades > 0 else 0
         avg_loss = closed_trades[closed_trades['pnl'] < 0]['pnl'].mean() if losing_trades > 0 else 0
         
@@ -619,7 +626,7 @@ class TradingDashboard:
             display_columns = [
                 'trade_id', 'direction', 'strategy', 'entry_time', 'exit_time',
                 'entry_price', 'exit_price', 'price_change', 'price_change_pct',
-                'quantity', 'pnl', 'pnl_pct', 'exit_status'
+                'quantity', 'leverage', 'position_size', 'atr', 'pnl', 'pnl_pct', 'exit_status'
             ]
             
             display_df = display_df[display_columns]
@@ -628,7 +635,7 @@ class TradingDashboard:
             display_df.columns = [
                 'Trade ID', 'Direction', 'Strategy', 'Entry Time', 'Exit Time',
                 'Entry Price', 'Exit Price', 'Price Change', 'Price Change %',
-                'Quantity', 'PnL', 'PnL %', 'Exit Status'
+                'Quantity', 'Leverage', 'Position Size', 'ATR', 'PnL', 'PnL %', 'Exit Status'
             ]
             
             # Color code PnL
@@ -1455,7 +1462,7 @@ def main():
                 trade_direction = "📈" if trade['direction'] == 'LONG' else "📉"
                 
                 with st.container():
-                    col1, col2, col3, col4, col5 = st.columns(5)
+                    col1, col2, col3, col4, col5, col6 = st.columns(6)
                     with col1:
                         st.write(f"{trade_direction} {trade['strategy']}")
                     with col2:
@@ -1463,15 +1470,25 @@ def main():
                     with col3:
                         st.write(f"{trade['pnl']:.2%}")
                     with col4:
+                        # Show leverage and position size
+                        leverage = trade.get('leverage', 1.0)
+                        position_size = trade.get('position_size', trade['quantity'] * trade['entry_price'])
+                        st.write(f"{leverage:.1f}x (${position_size:.0f})")
+                    with col5:
                         # Format times
                         entry_time = pd.to_datetime(trade['entry_time'])
                         exit_time = pd.to_datetime(trade['exit_time'])
                         entry_str = entry_time.strftime('%m/%d %H:%M')
                         exit_str = exit_time.strftime('%m/%d %H:%M')
                         st.write(f"{entry_str} → {exit_str}")
-                    with col5:
+                    with col6:
                         # Calculate dollar PnL
-                        dollar_pnl = trade['pnl'] * trade['quantity'] * trade['entry_price']
+                        # PnL percentage is already calculated based on margin used
+                        # So dollar PnL should be: pnl_percentage × margin_used
+                        leverage = trade.get('leverage', 1.0)
+                        position_size = trade.get('position_size', trade['quantity'] * trade['entry_price'])
+                        margin_used = position_size / leverage
+                        dollar_pnl = trade['pnl'] * margin_used
                         st.write(f"{trade_color} ${dollar_pnl:.2f}")
         else:
             st.info("No closed trades yet. Performance metrics will appear here once trades are executed.")

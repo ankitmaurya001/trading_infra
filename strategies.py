@@ -148,6 +148,83 @@ class BaseStrategy(ABC):
         
         return take_profit, stop_loss
     
+    def calculate_leverage_position_size(self, entry_price: float, position_type: PositionType, atr: float, 
+                                       available_balance: float, max_leverage: float, max_loss_percent: float) -> tuple:
+        """
+        Calculate optimal leverage and position size based on ATR and risk management.
+        
+        This method implements a risk-based position sizing system:
+        1. Calculate the maximum loss amount based on max_loss_percent
+        2. Determine the optimal leverage that keeps loss within max_loss_percent
+        3. Use max_leverage if the calculated leverage is higher
+        4. Calculate the final position size
+        
+        Args:
+            entry_price (float): Entry price of the trade
+            position_type (PositionType): LONG or SHORT position type
+            atr (float): Average True Range value for volatility measurement
+            available_balance (float): Available balance for trading
+            max_leverage (float): Maximum allowed leverage
+            max_loss_percent (float): Maximum loss as percentage of balance (e.g., 2.0 for 2%)
+            
+        Returns:
+            tuple: (leverage, position_size, quantity) where:
+                - leverage: Actual leverage used (1.0 to max_leverage)
+                - position_size: Dollar amount of the position
+                - quantity: Number of units to trade
+                
+        Raises:
+            ValueError: If inputs are invalid
+        """
+        # Validate inputs
+        if position_type not in [PositionType.LONG, PositionType.SHORT]:
+            raise ValueError(f"Position type must be PositionType.LONG or PositionType.SHORT, got: {position_type}")
+        
+        if atr < 0:
+            raise ValueError(f"ATR must be non-negative, got: {atr}")
+        
+        if entry_price <= 0:
+            raise ValueError(f"Entry price must be positive, got: {entry_price}")
+        
+        if available_balance <= 0:
+            raise ValueError(f"Available balance must be positive, got: {available_balance}")
+        
+        if max_leverage < 1.0:
+            raise ValueError(f"Max leverage must be >= 1.0, got: {max_leverage}")
+        
+        if max_loss_percent <= 0 or max_loss_percent > 100:
+            raise ValueError(f"Max loss percent must be between 0 and 100, got: {max_loss_percent}")
+        
+        # Handle NaN or None ATR values
+        if pd.isna(atr) or atr is None or atr == 0:
+            # Use a default ATR value (1% of entry price) if ATR is invalid
+            atr = entry_price * 0.01
+            print(f"Warning: Invalid ATR value, using default 1% of entry price: {atr}")
+        
+        # Calculate maximum loss amount in dollars
+        max_loss_amount = available_balance * (max_loss_percent / 100.0)
+        
+        # Calculate ATR as percentage of entry price
+        atr_percentage = atr / entry_price
+        
+        # Calculate the leverage needed to keep loss within max_loss_percent
+        # Loss = ATR_percentage * leverage, so leverage = max_loss_percent / ATR_percentage
+        optimal_leverage = (max_loss_percent / 100.0) / atr_percentage
+        
+        # Use the minimum of optimal leverage and max leverage
+        actual_leverage = min(optimal_leverage, max_leverage)
+        
+        # Ensure leverage is at least 1.0 (no leverage below 1x)
+        actual_leverage = max(actual_leverage, 1.0)
+        
+        # Calculate position size: balance * leverage
+        position_size = available_balance * actual_leverage
+        
+        # Calculate quantity
+        quantity = position_size / entry_price
+        
+        return actual_leverage, position_size, quantity
+    
     def get_strategy_metrics(self, since_date: pd.Timestamp = None, recent_bars: set = None) -> Dict:
         """Calculate strategy performance metrics, optionally for trades closed since a given date or in a set of recent bars (timestamps)."""
         if not self.trades:
