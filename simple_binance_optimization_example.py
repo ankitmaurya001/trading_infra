@@ -30,7 +30,7 @@ def main():
     
     # Configuration for Indian markets
    
-    symbol = "BTCUSDT"
+    symbol = "ETHUSDT"
     end_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     start_date = (datetime.now() - timedelta(days=20)).strftime('%Y-%m-%d %H:%M:%S')
     interval = "15m"  # Kite uses different interval format
@@ -87,6 +87,8 @@ def main():
             sharpe_threshold=0.1
         )
         
+        # The optimization now includes local sensitivity analysis automatically
+        
         print(f"\n🏆 BEST MA PARAMETERS: {best_params_ma}")
         print(f"📈 BEST MA METRICS:")
         print(f"  Total Trades: {best_metrics_ma['total_trades']}")
@@ -95,6 +97,70 @@ def main():
         print(f"  Calmar Ratio: {best_metrics_ma['calmar_ratio']:.3f}")
         print(f"  Max Drawdown: {best_metrics_ma['max_drawdown']:.2%}")
         print(f"  Total PnL: {best_metrics_ma['total_pnl']:.2%}")
+        
+        # Add robustness information if available
+        if 'robustness' in best_metrics_ma:
+            robustness = best_metrics_ma.get('robustness', 'N/A')
+            if isinstance(robustness, (int, float)):
+                if robustness < 0.1:
+                    robustness_status = "🟢 Very robust"
+                elif robustness < 0.2:
+                    robustness_status = "🟡 Moderately robust"
+                else:
+                    robustness_status = "🔴 Not robust"
+                print(f"  Robustness: {robustness:.4f} ({robustness_status})")
+            else:
+                print(f"  Robustness: {robustness}")
+        else:
+            print(f"  Robustness: Not calculated (run with local sensitivity analysis)")
+        
+        # Show most robust parameters if available
+        if 'most_robust_params' in best_metrics_ma:
+            most_robust_params = best_metrics_ma['most_robust_params']
+            most_robust_score = best_metrics_ma.get('most_robust_score', 'N/A')
+            most_robust_robustness = best_metrics_ma.get('most_robust_robustness', 'N/A')
+            
+            print(f"\n🛡️ MOST ROBUST PARAMETERS: {most_robust_params}")
+            print(f"📈 MOST ROBUST METRICS:")
+            
+            # Calculate metrics for most robust parameters
+            try:
+                from strategies import MovingAverageCrossover
+                robust_strategy = MovingAverageCrossover(**most_robust_params)
+                robust_signals = robust_strategy.generate_signals(data)
+                robust_metrics = robust_strategy.get_strategy_metrics()
+                
+                print(f"  Total Trades: {robust_metrics['total_trades']}")
+                print(f"  Win Rate: {robust_metrics['win_rate']:.2%}")
+                print(f"  Sharpe Ratio: {robust_metrics['sharpe_ratio']:.3f}")
+                print(f"  Calmar Ratio: {robust_metrics['calmar_ratio']:.3f}")
+                print(f"  Max Drawdown: {robust_metrics['max_drawdown']:.2%}")
+                print(f"  Total PnL: {robust_metrics['total_pnl']:.2%}")
+                
+                if isinstance(most_robust_robustness, (int, float)):
+                    if most_robust_robustness < 0.1:
+                        robustness_status = "🟢 Very robust"
+                    elif most_robust_robustness < 0.2:
+                        robustness_status = "🟡 Moderately robust"
+                    else:
+                        robustness_status = "🔴 Not robust"
+                    print(f"  Robustness: {most_robust_robustness:.4f} ({robustness_status})")
+                else:
+                    print(f"  Robustness: {most_robust_robustness}")
+                    
+            except Exception as e:
+                print(f"  Error calculating robust metrics: {e}")
+                if isinstance(most_robust_score, (int, float)):
+                    print(f"📊 Robust Score: {most_robust_score:.4f}")
+                else:
+                    print(f"📊 Robust Score: {most_robust_score}")
+            
+            # Compare with best parameters
+            if most_robust_params != best_params_ma:
+                print(f"\n💡 COMPARISON:")
+                print(f"   Best Score Parameters: {best_params_ma}")
+                print(f"   Most Robust Parameters: {most_robust_params}")
+                print(f"   Consider using robust parameters for live trading stability")
         
         print("\n" + "="*60)
         print("RSI STRATEGY OPTIMIZATION")
@@ -119,26 +185,120 @@ def main():
         print(f"  Max Drawdown: {best_metrics_rsi['max_drawdown']:.2%}")
         print(f"  Total PnL: {best_metrics_rsi['total_pnl']:.2%}")
         
-        print("\n" + "="*60)
-        print("DONCHIAN CHANNEL OPTIMIZATION")
-        print("="*60)
+        # Add robustness information for RSI
+        if 'robustness' in best_metrics_rsi:
+            robustness = best_metrics_rsi.get('robustness', 'N/A')
+            if isinstance(robustness, (int, float)):
+                if robustness < 0.1:
+                    robustness_status = "🟢 Very robust"
+                elif robustness < 0.2:
+                    robustness_status = "🟡 Moderately robust"
+                else:
+                    robustness_status = "🔴 Not robust"
+                print(f"  Robustness: {robustness:.4f} ({robustness_status})")
         
-        best_params_donchian, best_metrics_donchian = optimize_donchian_channel(
-            data=data,
-            channel_period_range=[10, 15, 20, 25, 30],
-            risk_reward_range=[1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0],
-            trading_fee=trading_fee,
-            sharpe_threshold=0.1
-        )
+        if 'most_robust_params' in best_metrics_rsi:
+            most_robust_params = best_metrics_rsi['most_robust_params']
+            most_robust_robustness = best_metrics_rsi.get('most_robust_robustness', 'N/A')
+            
+            print(f"\n🛡️ MOST ROBUST RSI PARAMETERS: {most_robust_params}")
+            print(f"📈 MOST ROBUST RSI METRICS:")
+            
+            # Calculate metrics for most robust RSI parameters
+            try:
+                from strategies import RSIStrategy
+                robust_strategy = RSIStrategy(**most_robust_params)
+                robust_signals = robust_strategy.generate_signals(data)
+                robust_metrics = robust_strategy.get_strategy_metrics()
+                
+                print(f"  Total Trades: {robust_metrics['total_trades']}")
+                print(f"  Win Rate: {robust_metrics['win_rate']:.2%}")
+                print(f"  Sharpe Ratio: {robust_metrics['sharpe_ratio']:.3f}")
+                print(f"  Calmar Ratio: {robust_metrics['calmar_ratio']:.3f}")
+                print(f"  Max Drawdown: {robust_metrics['max_drawdown']:.2%}")
+                print(f"  Total PnL: {robust_metrics['total_pnl']:.2%}")
+                
+                if isinstance(most_robust_robustness, (int, float)):
+                    if most_robust_robustness < 0.1:
+                        robustness_status = "🟢 Very robust"
+                    elif most_robust_robustness < 0.2:
+                        robustness_status = "🟡 Moderately robust"
+                    else:
+                        robustness_status = "🔴 Not robust"
+                    print(f"  Robustness: {most_robust_robustness:.4f} ({robustness_status})")
+                else:
+                    print(f"  Robustness: {most_robust_robustness}")
+                    
+            except Exception as e:
+                print(f"  Error calculating robust RSI metrics: {e}")
         
-        print(f"\n🏆 BEST DONCHIAN PARAMETERS: {best_params_donchian}")
-        print(f"📈 BEST DONCHIAN METRICS:")
-        print(f"  Total Trades: {best_metrics_donchian['total_trades']}")
-        print(f"  Win Rate: {best_metrics_donchian['win_rate']:.2%}")
-        print(f"  Sharpe Ratio: {best_metrics_donchian['sharpe_ratio']:.3f}")
-        print(f"  Calmar Ratio: {best_metrics_donchian['calmar_ratio']:.3f}")
-        print(f"  Max Drawdown: {best_metrics_donchian['max_drawdown']:.2%}")
-        print(f"  Total PnL: {best_metrics_donchian['total_pnl']:.2%}")
+        # print("\n" + "="*60)
+        # print("DONCHIAN CHANNEL OPTIMIZATION")
+        # print("="*60)
+        
+        # best_params_donchian, best_metrics_donchian = optimize_donchian_channel(
+        #     data=data,
+        #     channel_period_range=[10, 15, 20, 25, 30],
+        #     risk_reward_range=[1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0],
+        #     trading_fee=trading_fee,
+        #     sharpe_threshold=0.1
+        # )
+        
+        # print(f"\n🏆 BEST DONCHIAN PARAMETERS: {best_params_donchian}")
+        # print(f"📈 BEST DONCHIAN METRICS:")
+        # print(f"  Total Trades: {best_metrics_donchian['total_trades']}")
+        # print(f"  Win Rate: {best_metrics_donchian['win_rate']:.2%}")
+        # print(f"  Sharpe Ratio: {best_metrics_donchian['sharpe_ratio']:.3f}")
+        # print(f"  Calmar Ratio: {best_metrics_donchian['calmar_ratio']:.3f}")
+        # print(f"  Max Drawdown: {best_metrics_donchian['max_drawdown']:.2%}")
+        # print(f"  Total PnL: {best_metrics_donchian['total_pnl']:.2%}")
+        
+        # # Add robustness information for Donchian
+        # if 'robustness' in best_metrics_donchian:
+        #     robustness = best_metrics_donchian.get('robustness', 'N/A')
+        #     if isinstance(robustness, (int, float)):
+        #         if robustness < 0.1:
+        #             robustness_status = "🟢 Very robust"
+        #         elif robustness < 0.2:
+        #             robustness_status = "🟡 Moderately robust"
+        #         else:
+        #             robustness_status = "🔴 Not robust"
+        #         print(f"  Robustness: {robustness:.4f} ({robustness_status})")
+        
+        # if 'most_robust_params' in best_metrics_donchian:
+        #     most_robust_params = best_metrics_donchian['most_robust_params']
+        #     most_robust_robustness = best_metrics_donchian.get('most_robust_robustness', 'N/A')
+            
+        #     print(f"\n🛡️ MOST ROBUST DONCHIAN PARAMETERS: {most_robust_params}")
+        #     print(f"📈 MOST ROBUST DONCHIAN METRICS:")
+            
+        #     # Calculate metrics for most robust Donchian parameters
+        #     try:
+        #         from strategies import DonchianChannelBreakout
+        #         robust_strategy = DonchianChannelBreakout(**most_robust_params)
+        #         robust_signals = robust_strategy.generate_signals(data)
+        #         robust_metrics = robust_strategy.get_strategy_metrics()
+                
+        #         print(f"  Total Trades: {robust_metrics['total_trades']}")
+        #         print(f"  Win Rate: {robust_metrics['win_rate']:.2%}")
+        #         print(f"  Sharpe Ratio: {robust_metrics['sharpe_ratio']:.3f}")
+        #         print(f"  Calmar Ratio: {robust_metrics['calmar_ratio']:.3f}")
+        #         print(f"  Max Drawdown: {robust_metrics['max_drawdown']:.2%}")
+        #         print(f"  Total PnL: {robust_metrics['total_pnl']:.2%}")
+                
+        #         if isinstance(most_robust_robustness, (int, float)):
+        #             if most_robust_robustness < 0.1:
+        #                 robustness_status = "🟢 Very robust"
+        #             elif most_robust_robustness < 0.2:
+        #                 robustness_status = "🟡 Moderately robust"
+        #             else:
+        #                 robustness_status = "🔴 Not robust"
+        #             print(f"  Robustness: {most_robust_robustness:.4f} ({robustness_status})")
+        #         else:
+        #             print(f"  Robustness: {most_robust_robustness}")
+                    
+        #     except Exception as e:
+        #         print(f"  Error calculating robust Donchian metrics: {e}")
         
         # Compare strategies
         print("\n" + "="*60)
@@ -270,10 +430,101 @@ def demo_with_sample_data():
     print("\n✅ Demo completed successfully!")
     print("💡 To use real data, update credentials and run main() function")
 
+def demonstrate_local_sensitivity_analysis():
+    """
+    Demonstrate local sensitivity analysis around optimal parameters.
+    This shows how robust the parameters are to small variations.
+    """
+    print("LOCAL SENSITIVITY ANALYSIS DEMONSTRATION")
+    print("="*60)
+    
+    # Create sample data
+    dates = pd.date_range(
+        start='2025-01-01 09:15:00',
+        end='2025-01-31 15:30:00',
+        freq='15min'
+    )
+    
+    # Filter for weekdays and market hours
+    market_dates = []
+    for date in dates:
+        if date.weekday() < 5:  # Monday to Friday
+            if '09:15' <= date.strftime('%H:%M') <= '15:30':
+                market_dates.append(date)
+    
+    # Generate sample OHLCV data
+    import numpy as np
+    np.random.seed(42)
+    
+    n_points = len(market_dates)
+    base_price = 500.0
+    prices = [base_price]
+    
+    for i in range(1, n_points):
+        change = np.random.normal(0.001, 0.02)
+        new_price = prices[-1] * (1 + change)
+        prices.append(max(new_price, 1.0))
+    
+    data = pd.DataFrame({
+        'Open': prices,
+        'High': [p * (1 + abs(np.random.normal(0, 0.01))) for p in prices],
+        'Low': [p * (1 - abs(np.random.normal(0, 0.01))) for p in prices],
+        'Close': prices,
+        'Volume': [np.random.randint(100000, 1000000) for _ in range(n_points)]
+    }, index=market_dates)
+    
+    data['High'] = data[['Open', 'High', 'Close']].max(axis=1)
+    data['Low'] = data[['Open', 'Low', 'Close']].min(axis=1)
+    
+    print(f"📊 Generated {len(data)} sample data points")
+    
+    # Run optimization with local sensitivity analysis
+    from strategy_optimizer import StrategyOptimizer, MovingAverageCrossover
+    
+    param_ranges = {
+        'short_window': [10, 15, 20, 25, 30],
+        'long_window': [40, 50, 60, 70, 80],
+        'risk_reward_ratio': [2.0, 2.5, 3.0, 3.5, 4.0],
+        'trading_fee': [0.001]
+    }
+    
+    optimizer = StrategyOptimizer(
+        data=data,
+        strategy_class=MovingAverageCrossover,
+        param_ranges=param_ranges,
+        optimization_metric="composite_score",
+        min_trades=5,
+        max_drawdown_threshold=0.4,
+        sharpe_threshold=0.1
+    )
+    
+    print("\n🔍 Running optimization with local sensitivity analysis...")
+    best_params, best_metrics = optimizer.optimize()
+    
+    print(f"\n🏆 Best Parameters: {best_params}")
+    best_score = best_metrics.get('composite_score', 'N/A')
+    if isinstance(best_score, (int, float)):
+        print(f"📈 Best Score: {best_score:.4f}")
+    else:
+        print(f"📈 Best Score: {best_score}")
+    
+    print("\n" + "="*60)
+    print("LOCAL SENSITIVITY ANALYSIS RESULTS")
+    print("="*60)
+    print("This analysis tests how much the score changes when we vary")
+    print("each parameter by ±15% around the optimal values.")
+    print("Lower robustness scores indicate more stable parameters.")
+    
+    # Run the local sensitivity analysis
+    print("\n🔍 Running local sensitivity analysis...")
+    optimizer.print_optimization_summary()
+
 if __name__ == "__main__":
     import sys
     
     if len(sys.argv) > 1 and sys.argv[1] == "--demo":
         demo_with_sample_data()
+    elif len(sys.argv) > 1 and sys.argv[1] == "--sensitivity":
+        demonstrate_local_sensitivity_analysis()
     else:
         main()

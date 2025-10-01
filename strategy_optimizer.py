@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Dict, List, Tuple, Any, Optional, Union
 from itertools import product
 import warnings
 import logging
@@ -239,6 +239,49 @@ class StrategyOptimizer:
         logger.info(f"Best parameters: {best_params}")
         logger.info(f"Failed runs: {len(self.failed_runs)}")
         
+        # Calculate local sensitivity analysis and add robustness info to best_metrics
+        if len(self.results) >= 5:
+            try:
+                # Get top 5 results for robustness analysis
+                top_results = self.get_top_results(5)
+                self._local_sensitivity_results = self.analyze_local_sensitivity(top_results, variation_percent=[0.0375, 0.01875], robustness_selection='average')
+                
+                # Find the most robust result
+                most_robust_result = None
+                best_robustness = float('inf')
+                
+                for result_key, analysis in self._local_sensitivity_results.items():
+                    overall_robustness = analysis['param_variations'].get('overall_robustness', float('inf'))
+                    if overall_robustness < best_robustness:
+                        best_robustness = overall_robustness
+                        most_robust_result = analysis
+                
+                if most_robust_result and best_robustness != float('inf'):
+                    # Add robustness info to best_metrics
+                    best_metrics['most_robust_params'] = most_robust_result['base_params']
+                    best_metrics['most_robust_score'] = most_robust_result['base_score']
+                    best_metrics['most_robust_robustness'] = best_robustness
+                    
+                    # Calculate robustness for the best parameters
+                    best_params_robustness = None
+                    for result_key, analysis in self._local_sensitivity_results.items():
+                        if analysis['base_params'] == best_params:
+                            best_params_robustness = analysis['param_variations'].get('overall_robustness', float('inf'))
+                            break
+                    
+                    if best_params_robustness is not None:
+                        best_metrics['robustness'] = best_params_robustness
+                    
+                    logger.info(f"Most robust parameters: {most_robust_result['base_params']} (robustness: {best_robustness:.4f})")
+                    if best_params_robustness is not None:
+                        logger.info(f"Best parameters robustness: {best_params_robustness:.4f}")
+                    
+            except Exception as e:
+                logger.warning(f"Could not calculate robustness: {e}")
+                self._local_sensitivity_results = None
+        else:
+            self._local_sensitivity_results = None
+        
         return best_params, best_metrics
     
     def get_top_results(self, n: int = 10) -> List[Dict]:
@@ -288,6 +331,176 @@ class StrategyOptimizer:
                 avg_scores[param_value] = self.PENALTY_SCORE
         
         return avg_scores
+    
+    def analyze_local_sensitivity(self, top_results: List[Dict], variation_percent: Union[float, List[float]] = 0.15, robustness_selection: str = 'average') -> Dict:
+        """
+        Analyze local sensitivity around the top parameter combinations.
+        Tests parameter variations within ±variation_percent of optimal values.
+        
+        Args:
+            top_results: List of top optimization results
+            variation_percent: Single percentage or list of percentages to test
+                               (e.g., 0.15 for ±15%). If a list is provided,
+                               robustness will be computed for each level.
+            robustness_selection: How to compute overall robustness when multiple
+                                  variations are provided. Options: 'primary'
+                                  (first value), 'average' (mean across all),
+                                  'max' (worst case), 'min' (best case).
+            
+        Returns:
+            Dictionary with robustness analysis for each top result
+        """
+        local_sensitivity_results = {}
+
+        # Normalize variation percents to a list for unified processing
+        if isinstance(variation_percent, (int, float)):
+            variation_percents: List[float] = [float(variation_percent)]
+        else:
+            variation_percents = [float(v) for v in variation_percent]
+        
+        for i, result in enumerate(top_results):
+            base_params = result['parameters'].copy()
+            base_score = result['score']
+            
+            print(f"\n🔍 LOCAL SENSITIVITY ANALYSIS - Result #{i+1}")
+            print(f"Base Score: {base_score:.4f}")
+            print(f"Base Parameters: {base_params}")
+            print("-" * 60)
+            
+            # Test variations for each parameter
+            param_variations = {}
+            robustness_scores_by_variation = {vp: [] for vp in variation_percents}
+            
+            for param_name, base_value in base_params.items():
+                if param_name == 'trading_fee':  # Skip trading_fee as it's usually fixed
+                    continue
+                    
+                print(f"\n📊 Testing {param_name} variations around {base_value}:")
+                
+                # Compute per-variation scores and robustness
+                by_variation = {}
+                for vp in variation_percents:
+                    # Generate test values around the base value for this variation percent
+                    if isinstance(base_value, int):
+                        variation_range = max(1, int(base_value * vp))
+                        test_values = [
+                            max(1, base_value - variation_range),
+                            base_value,
+                            base_value + variation_range
+                        ]
+                    else:
+                        variation_range = base_value * vp
+                        test_values = [
+                            max(0.1, base_value - variation_range),
+                            base_value,
+                            base_value + variation_range
+                        ]
+                    # Remove duplicates and sort
+                    test_values = sorted(list(set(test_values)))
+
+                    param_scores = {}
+                    for test_value in test_values:
+                        # Create test parameters
+                        test_params = base_params.copy()
+                        test_params[param_name] = test_value
+
+                        # Validate parameters
+                        if not self.validate_parameters(test_params):
+                            print(f"  {test_value}: INVALID (skipped)")
+                            continue
+
+                        # Run strategy with test parameters
+                        try:
+                            strategy = self.strategy_class(**test_params)
+                            self._reset_strategy_state(strategy)
+
+                            # Run backtest using generate_signals method
+                            signals_data = strategy.generate_signals(self.data)
+
+                            # Calculate metrics
+                            metrics = strategy.get_strategy_metrics()
+                            score = self.calculate_composite_score(metrics)
+
+                            param_scores[test_value] = score
+                            print(f"  {test_value}: {score:.4f}")
+
+                        except Exception as e:
+                            print(f"  {test_value}: ERROR - {str(e)}")
+                            param_scores[test_value] = self.PENALTY_SCORE
+
+                    # Calculate robustness metrics for this parameter and variation
+                    valid_scores = [s for s in param_scores.values() if s > self.PENALTY_SCORE]
+                    if valid_scores:
+                        score_variance = np.var(valid_scores)
+                        score_std = np.std(valid_scores)
+                        min_score = min(valid_scores)
+                        max_score = max(valid_scores)
+                        robustness = score_std / (base_score + self.EPSILON)
+
+                        by_variation[vp] = {
+                            'scores': param_scores,
+                            'variance': score_variance,
+                            'std_dev': score_std,
+                            'min_score': min_score,
+                            'max_score': max_score,
+                            'robustness': robustness
+                        }
+                        robustness_scores_by_variation[vp].append(robustness)
+                    else:
+                        print(f"  ❌ No valid scores for {param_name} at variation {vp}")
+
+                # Attach per-parameter, per-variation details
+                param_variations[param_name] = {
+                    'by_variation': by_variation
+                }
+
+                # For backward compatibility, print summary for the first variation only
+                first_vp = variation_percents[0]
+                if first_vp in by_variation:
+                    rb = by_variation[first_vp]['robustness']
+                    min_s = by_variation[first_vp]['min_score']
+                    max_s = by_variation[first_vp]['max_score']
+                    print(f"  📈 Robustness (@±{first_vp:.4f}): {rb:.4f} (lower = more robust)")
+                    print(f"  📊 Score range (@±{first_vp:.4f}): {min_s:.4f} - {max_s:.4f}")
+            
+            # Overall robustness for this result
+            overall_by_variation = {}
+            for vp, rb_list in robustness_scores_by_variation.items():
+                if rb_list:
+                    overall_by_variation[vp] = np.mean(rb_list)
+                else:
+                    overall_by_variation[vp] = float('inf')
+
+            # Compute overall robustness according to selection method
+            first_vp = variation_percents[0]
+            if robustness_selection == 'primary' or len(variation_percents) == 1:
+                overall_robustness_value = overall_by_variation.get(first_vp, float('inf'))
+            elif robustness_selection == 'average':
+                vals = [overall_by_variation[vp] for vp in variation_percents]
+                overall_robustness_value = float(np.mean(vals)) if len(vals) > 0 else float('inf')
+            elif robustness_selection == 'max':
+                vals = [overall_by_variation[vp] for vp in variation_percents]
+                overall_robustness_value = float(np.max(vals)) if len(vals) > 0 else float('inf')
+            elif robustness_selection == 'min':
+                vals = [overall_by_variation[vp] for vp in variation_percents]
+                overall_robustness_value = float(np.min(vals)) if len(vals) > 0 else float('inf')
+            else:
+                overall_robustness_value = overall_by_variation.get(first_vp, float('inf'))
+
+            param_variations['overall_robustness'] = overall_robustness_value
+            param_variations['overall_robustness_by_variation'] = overall_by_variation
+
+            print(f"\n🎯 Overall Robustness by variation: " + ", ".join([f"±{vp:.4f}: {overall_by_variation[vp]:.4f}" for vp in variation_percents]))
+            if robustness_selection != 'primary' and len(variation_percents) > 1:
+                print(f"➡️ Using '{robustness_selection}' across variations for final robustness: {overall_robustness_value:.4f}")
+            
+            local_sensitivity_results[f"result_{i+1}"] = {
+                'base_params': base_params,
+                'base_score': base_score,
+                'param_variations': param_variations
+            }
+        
+        return local_sensitivity_results
     
     def get_failed_runs_summary(self) -> Dict[str, int]:
         """
@@ -355,6 +568,86 @@ class StrategyOptimizer:
             if sensitivity:
                 best_value = max(sensitivity.items(), key=lambda x: x[1])
                 print(f"{param_name}: Best value = {best_value[0]} (avg score: {best_value[1]:.4f})")
+        
+        # Local sensitivity analysis around top results (use cached results)
+        if self._local_sensitivity_results is not None:
+            print("\n" + "="*60)
+            print("LOCAL SENSITIVITY ANALYSIS")
+            print("="*60)
+            print("Parameter robustness analysis (using cached results)...")
+            
+            local_sensitivity = self._local_sensitivity_results
+        else:
+            print("\n" + "="*60)
+            print("LOCAL SENSITIVITY ANALYSIS")
+            print("="*60)
+            print("Testing parameter robustness around top combinations...")
+            
+            top_results = self.get_top_results(5)
+            local_sensitivity = self.analyze_local_sensitivity(top_results, variation_percent=[0.0375, 0.01875], robustness_selection='average')
+        
+        # Summary of robustness
+        print("\n" + "="*60)
+        print("ROBUSTNESS SUMMARY")
+        print("="*60)
+        robustness_ranking = []
+        
+        # If we have multi-variation robustness, display a compact table first
+        # Use keys from the first result to derive the variation percents displayed
+        any_result_key = next(iter(local_sensitivity)) if local_sensitivity else None
+        variation_columns: List[float] = []
+        primary_variation: Optional[float] = None
+        if any_result_key is not None:
+            any_result = local_sensitivity[any_result_key]
+            overall_by_var = any_result['param_variations'].get('overall_robustness_by_variation')
+            if isinstance(overall_by_var, dict) and overall_by_var:
+                # Preserve insertion order as constructed during analysis
+                variation_columns = list(overall_by_var.keys())
+                primary_variation = variation_columns[0]
+
+        if variation_columns:
+            # Header
+            header = f"{'Result':<8} {'Base Score':<12} " + " ".join([f"±{vp:<8.4f}" for vp in variation_columns])
+            print(header)
+            print("-" * max(70, len(header)))
+            # Rows
+            for result_key, analysis in local_sensitivity.items():
+                base_score = analysis['base_score']
+                overall_by_var = analysis['param_variations'].get('overall_robustness_by_variation', {})
+                row_values = [f"{overall_by_var.get(vp, float('inf')):<8.4f}" for vp in variation_columns]
+                print(f"{result_key:<8} {base_score:<12.4f} " + " ".join(row_values))
+            if primary_variation is not None:
+                print(f"\nFinal ranking uses primary variation ±{primary_variation:.4f}.")
+
+        for result_key, analysis in local_sensitivity.items():
+            overall_robustness = analysis['param_variations'].get('overall_robustness', float('inf'))
+            base_score = analysis['base_score']
+            robustness_ranking.append((result_key, base_score, overall_robustness))
+        
+        # Sort by robustness (lower is better)
+        robustness_ranking.sort(key=lambda x: x[2])
+        
+        print(f"{'Rank':<4} {'Result':<8} {'Base Score':<12} {'Robustness':<12} {'Recommendation'}")
+        print("-" * 70)
+        
+        for i, (result_key, base_score, robustness) in enumerate(robustness_ranking, 1):
+            if robustness == float('inf'):
+                recommendation = "❌ Not robust"
+            elif robustness < 0.1:
+                recommendation = "🟢 Very robust"
+            elif robustness < 0.2:
+                recommendation = "🟡 Moderately robust"
+            else:
+                recommendation = "🔴 Not robust"
+            
+            print(f"{i:<4} {result_key:<8} {base_score:<12.4f} {robustness:<12.4f} {recommendation}")
+        
+        print("\n💡 Interpretation:")
+        print("• Robustness < 0.1: Very stable parameters (recommended)")
+        print("• Robustness 0.1-0.2: Moderately stable (acceptable)")
+        print("• Robustness > 0.2: Sensitive to parameter changes (use with caution)")
+        
+        return local_sensitivity
 
 def optimize_moving_average_crossover(data: pd.DataFrame, 
                                     short_window_range: List[int] = [5, 10, 15, 20, 25],

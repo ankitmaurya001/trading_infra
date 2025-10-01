@@ -226,7 +226,19 @@ class BaseStrategy(ABC):
         return actual_leverage, position_size, quantity
     
     def get_strategy_metrics(self, since_date: pd.Timestamp = None, recent_bars: set = None) -> Dict:
-        """Calculate strategy performance metrics, optionally for trades closed since a given date or in a set of recent bars (timestamps)."""
+        """
+        Calculate strategy performance metrics, optionally for trades closed since a given date or in a set of recent bars (timestamps).
+        
+        Note: This method assumes trade.pnl is a fractional return (e.g., 0.05 = 5% gain, -0.03 = 3% loss).
+        The compounding calculations use (1 + pnl) which is correct for fractional returns.
+        
+        Args:
+            since_date: Only include trades closed on or after this date
+            recent_bars: Only include trades closed in this set of timestamps
+            
+        Returns:
+            Dict containing performance metrics with proper annualization where applicable
+        """
         if not self.trades:
             return {
                 "total_trades": 0,
@@ -243,7 +255,7 @@ class BaseStrategy(ABC):
                 "largest_loss": 0,
                 "consecutive_wins": 0,
                 "consecutive_losses": 0,
-                "risk_reward_ratio": 0,
+                "win_loss_ratio": 0,
                 "calmar_ratio": 0,
                 "sortino_ratio": 0
             }
@@ -270,7 +282,7 @@ class BaseStrategy(ABC):
                 "largest_loss": 0,
                 "consecutive_wins": 0,
                 "consecutive_losses": 0,
-                "risk_reward_ratio": 0,
+                "win_loss_ratio": 0,
                 "calmar_ratio": 0,
                 "sortino_ratio": 0
             }
@@ -298,14 +310,20 @@ class BaseStrategy(ABC):
         largest_win = max(t.pnl for t in closed_trades) if closed_trades else 0
         largest_loss = min(t.pnl for t in closed_trades) if closed_trades else 0
         
-        # Risk-reward ratio (avg_win / abs(avg_loss)) - this is actually the win/loss ratio
+        # Win/Loss ratio (avg_win / abs(avg_loss)) - this is the average win vs average loss
         # For true risk-reward ratio, we'd need to know the intended risk per trade
         win_loss_ratio = avg_win / abs(avg_loss) if avg_loss != 0 else 0
         
         # Profit factor (total profit / total loss)
         total_profit = sum(t.pnl for t in winning_trades) if winning_trades else 0
         total_loss = abs(sum(t.pnl for t in losing_trades)) if losing_trades else 0
-        profit_factor = total_profit / total_loss if total_loss != 0 else float('inf') if total_profit > 0 else 0
+        # Handle edge case: clamp infinite profit factor to a large but finite value
+        if total_loss != 0:
+            profit_factor = total_profit / total_loss
+        elif total_profit > 0:
+            profit_factor = 999.0  # Large but finite value instead of inf
+        else:
+            profit_factor = 0
         
         # Consecutive wins/losses - fixed logic
         max_consecutive_wins = 0
@@ -392,7 +410,7 @@ class BaseStrategy(ABC):
             "largest_loss": largest_loss,
             "consecutive_wins": max_consecutive_wins,
             "consecutive_losses": max_consecutive_losses,
-            "risk_reward_ratio": win_loss_ratio,  # Renamed for clarity
+            "win_loss_ratio": win_loss_ratio,  # Average win vs average loss ratio
             "calmar_ratio": calmar_ratio,
             "sortino_ratio": sortino_ratio
         }

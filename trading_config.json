@@ -14,7 +14,7 @@
     "ma_params": {
         "short_window": 5,
         "long_window": 40,
-        "risk_reward_ratio": 2.0,
+        "risk_reward_ratio": 2.5,
         "trading_fee": 0.0
     },
     "rsi_params": {
