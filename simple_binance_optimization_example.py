@@ -32,6 +32,7 @@ def main():
    
     symbol = "ETHUSDT"
     end_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    #end_date = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d %H:%M:%S')
     start_date = (datetime.now() - timedelta(days=20)).strftime('%Y-%m-%d %H:%M:%S')
     interval = "15m"  # Kite uses different interval format
     trading_fee = 0 # 0.03% - typical Kite charges
@@ -232,73 +233,73 @@ def main():
             except Exception as e:
                 print(f"  Error calculating robust RSI metrics: {e}")
         
-        # print("\n" + "="*60)
-        # print("DONCHIAN CHANNEL OPTIMIZATION")
-        # print("="*60)
+        print("\n" + "="*60)
+        print("DONCHIAN CHANNEL OPTIMIZATION")
+        print("="*60)
         
-        # best_params_donchian, best_metrics_donchian = optimize_donchian_channel(
-        #     data=data,
-        #     channel_period_range=[10, 15, 20, 25, 30],
-        #     risk_reward_range=[1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0],
-        #     trading_fee=trading_fee,
-        #     sharpe_threshold=0.1
-        # )
+        best_params_donchian, best_metrics_donchian = optimize_donchian_channel(
+            data=data,
+            channel_period_range=[10, 15, 20, 25, 30],
+            risk_reward_range=[1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0],
+            trading_fee=trading_fee,
+            sharpe_threshold=0.1
+        )
         
-        # print(f"\n🏆 BEST DONCHIAN PARAMETERS: {best_params_donchian}")
-        # print(f"📈 BEST DONCHIAN METRICS:")
-        # print(f"  Total Trades: {best_metrics_donchian['total_trades']}")
-        # print(f"  Win Rate: {best_metrics_donchian['win_rate']:.2%}")
-        # print(f"  Sharpe Ratio: {best_metrics_donchian['sharpe_ratio']:.3f}")
-        # print(f"  Calmar Ratio: {best_metrics_donchian['calmar_ratio']:.3f}")
-        # print(f"  Max Drawdown: {best_metrics_donchian['max_drawdown']:.2%}")
-        # print(f"  Total PnL: {best_metrics_donchian['total_pnl']:.2%}")
+        print(f"\n🏆 BEST DONCHIAN PARAMETERS: {best_params_donchian}")
+        print(f"📈 BEST DONCHIAN METRICS:")
+        print(f"  Total Trades: {best_metrics_donchian['total_trades']}")
+        print(f"  Win Rate: {best_metrics_donchian['win_rate']:.2%}")
+        print(f"  Sharpe Ratio: {best_metrics_donchian['sharpe_ratio']:.3f}")
+        print(f"  Calmar Ratio: {best_metrics_donchian['calmar_ratio']:.3f}")
+        print(f"  Max Drawdown: {best_metrics_donchian['max_drawdown']:.2%}")
+        print(f"  Total PnL: {best_metrics_donchian['total_pnl']:.2%}")
         
-        # # Add robustness information for Donchian
-        # if 'robustness' in best_metrics_donchian:
-        #     robustness = best_metrics_donchian.get('robustness', 'N/A')
-        #     if isinstance(robustness, (int, float)):
-        #         if robustness < 0.1:
-        #             robustness_status = "🟢 Very robust"
-        #         elif robustness < 0.2:
-        #             robustness_status = "🟡 Moderately robust"
-        #         else:
-        #             robustness_status = "🔴 Not robust"
-        #         print(f"  Robustness: {robustness:.4f} ({robustness_status})")
+        # Add robustness information for Donchian
+        if 'robustness' in best_metrics_donchian:
+            robustness = best_metrics_donchian.get('robustness', 'N/A')
+            if isinstance(robustness, (int, float)):
+                if robustness < 0.1:
+                    robustness_status = "🟢 Very robust"
+                elif robustness < 0.2:
+                    robustness_status = "🟡 Moderately robust"
+                else:
+                    robustness_status = "🔴 Not robust"
+                print(f"  Robustness: {robustness:.4f} ({robustness_status})")
         
-        # if 'most_robust_params' in best_metrics_donchian:
-        #     most_robust_params = best_metrics_donchian['most_robust_params']
-        #     most_robust_robustness = best_metrics_donchian.get('most_robust_robustness', 'N/A')
+        if 'most_robust_params' in best_metrics_donchian:
+            most_robust_params = best_metrics_donchian['most_robust_params']
+            most_robust_robustness = best_metrics_donchian.get('most_robust_robustness', 'N/A')
             
-        #     print(f"\n🛡️ MOST ROBUST DONCHIAN PARAMETERS: {most_robust_params}")
-        #     print(f"📈 MOST ROBUST DONCHIAN METRICS:")
+            print(f"\n🛡️ MOST ROBUST DONCHIAN PARAMETERS: {most_robust_params}")
+            print(f"📈 MOST ROBUST DONCHIAN METRICS:")
             
-        #     # Calculate metrics for most robust Donchian parameters
-        #     try:
-        #         from strategies import DonchianChannelBreakout
-        #         robust_strategy = DonchianChannelBreakout(**most_robust_params)
-        #         robust_signals = robust_strategy.generate_signals(data)
-        #         robust_metrics = robust_strategy.get_strategy_metrics()
+            # Calculate metrics for most robust Donchian parameters
+            try:
+                from strategies import DonchianChannelBreakout
+                robust_strategy = DonchianChannelBreakout(**most_robust_params)
+                robust_signals = robust_strategy.generate_signals(data)
+                robust_metrics = robust_strategy.get_strategy_metrics()
                 
-        #         print(f"  Total Trades: {robust_metrics['total_trades']}")
-        #         print(f"  Win Rate: {robust_metrics['win_rate']:.2%}")
-        #         print(f"  Sharpe Ratio: {robust_metrics['sharpe_ratio']:.3f}")
-        #         print(f"  Calmar Ratio: {robust_metrics['calmar_ratio']:.3f}")
-        #         print(f"  Max Drawdown: {robust_metrics['max_drawdown']:.2%}")
-        #         print(f"  Total PnL: {robust_metrics['total_pnl']:.2%}")
+                print(f"  Total Trades: {robust_metrics['total_trades']}")
+                print(f"  Win Rate: {robust_metrics['win_rate']:.2%}")
+                print(f"  Sharpe Ratio: {robust_metrics['sharpe_ratio']:.3f}")
+                print(f"  Calmar Ratio: {robust_metrics['calmar_ratio']:.3f}")
+                print(f"  Max Drawdown: {robust_metrics['max_drawdown']:.2%}")
+                print(f"  Total PnL: {robust_metrics['total_pnl']:.2%}")
                 
-        #         if isinstance(most_robust_robustness, (int, float)):
-        #             if most_robust_robustness < 0.1:
-        #                 robustness_status = "🟢 Very robust"
-        #             elif most_robust_robustness < 0.2:
-        #                 robustness_status = "🟡 Moderately robust"
-        #             else:
-        #                 robustness_status = "🔴 Not robust"
-        #             print(f"  Robustness: {most_robust_robustness:.4f} ({robustness_status})")
-        #         else:
-        #             print(f"  Robustness: {most_robust_robustness}")
+                if isinstance(most_robust_robustness, (int, float)):
+                    if most_robust_robustness < 0.1:
+                        robustness_status = "🟢 Very robust"
+                    elif most_robust_robustness < 0.2:
+                        robustness_status = "🟡 Moderately robust"
+                    else:
+                        robustness_status = "🔴 Not robust"
+                    print(f"  Robustness: {most_robust_robustness:.4f} ({robustness_status})")
+                else:
+                    print(f"  Robustness: {most_robust_robustness}")
                     
-        #     except Exception as e:
-        #         print(f"  Error calculating robust Donchian metrics: {e}")
+            except Exception as e:
+                print(f"  Error calculating robust Donchian metrics: {e}")
         
         # Compare strategies
         print("\n" + "="*60)

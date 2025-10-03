@@ -1,20 +1,28 @@
 {
-    "symbol": "BTCUSDT",
+    "symbol": "ETHUSDT",
     "interval": "15m",
     "polling_frequency": 60,
     "initial_balance": 10000,
     "max_leverage": 10,
     "max_loss_percent": 2.0,
-    "mock_mode": true,
+    "trading_mode": "testnet",
+    "binance_api_key": "",
+    "binance_api_secret": "",
+    "risk": {
+        "max_order_notional": 10000.0,
+        "max_daily_notional": 1000000.0,
+        "max_open_orders": 1,
+        "enable_kill_switch": true
+    },
     "mock_days_back": 10,
     "mock_delay": 0,
     "enabled_strategies": [
         "ma"
     ],
     "ma_params": {
-        "short_window": 5,
-        "long_window": 40,
-        "risk_reward_ratio": 2.5,
+        "short_window": 25,
+        "long_window": 50,
+        "risk_reward_ratio": 3.0,
         "trading_fee": 0.0
     },
     "rsi_params": {

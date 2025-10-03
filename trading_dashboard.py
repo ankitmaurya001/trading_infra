@@ -66,6 +66,7 @@ class TradingDashboard:
                     start_time = status_data.get('last_update', 'unknown')
                     is_running = status_data.get('is_running', False)
                     mock_mode = status_data.get('mock_mode', False)
+                    execution_mode = status_data.get('execution_mode', 'unknown')
                     
                     # Get folder modification time as fallback
                     folder_mtime = datetime.fromtimestamp(os.path.getmtime(os.path.join(self.log_folder, session_folder)))
@@ -77,6 +78,7 @@ class TradingDashboard:
                         'file_mtime': folder_mtime,
                         'is_running': is_running,
                         'mock_mode': mock_mode,
+                        'execution_mode': execution_mode,
                         'status_file': status_file,
                         'session_folder': os.path.join(self.log_folder, session_folder)
                     })
@@ -889,8 +891,25 @@ def main():
         session_options = []
         for session in sessions:
             status_icon = "🟢" if session['is_running'] else "🔴"
-            mode_icon = "🎭" if session['mock_mode'] else "📡"
-            display_name = f"{status_icon} {mode_icon} {session['symbol']} - {session['session_id']}"
+            # Build a friendly mode label
+            exec_mode = session.get('execution_mode', 'unknown')
+            if exec_mode == 'mock':
+                mode_icon = "🎭"
+                mode_label = "Mock"
+            elif exec_mode == 'paper':
+                mode_icon = "🧪"
+                mode_label = "Paper"
+            elif exec_mode == 'binance_testnet':
+                mode_icon = "🧪📡"
+                mode_label = "Testnet"
+            elif exec_mode == 'binance_live':
+                mode_icon = "⚡📡"
+                mode_label = "Live"
+            else:
+                mode_icon = "❓"
+                mode_label = exec_mode
+
+            display_name = f"{status_icon} {mode_icon} {session['symbol']} - {mode_label} - {session['session_id']}"
             session_options.append(display_name)
         
         selected_index = st.sidebar.selectbox(
@@ -961,7 +980,17 @@ def main():
     with col2:
         st.metric("Status", "🟢 Live" if selected_session['is_running'] else "🔴 Stopped")
     with col3:
-        st.metric("Mode", "🎭 Mock" if selected_session['mock_mode'] else "📡 Live")
+        exec_mode = selected_session.get('execution_mode', 'unknown')
+        if exec_mode == 'mock':
+            st.metric("Mode", "🎭 Mock")
+        elif exec_mode == 'paper':
+            st.metric("Mode", "🧪 Paper")
+        elif exec_mode == 'binance_testnet':
+            st.metric("Mode", "🧪📡 Testnet")
+        elif exec_mode == 'binance_live':
+            st.metric("Mode", "⚡📡 Live")
+        else:
+            st.metric("Mode", f"❓ {exec_mode}")
     with col4:
         st.metric("Session ID", selected_session['session_id'][:8] + "...")
     
@@ -1080,6 +1109,29 @@ def main():
             return rsi
         
         market_data['RSI'] = calculate_rsi(market_data['Close'])
+
+        # Display the strategy parameters in use
+        with st.expander("⚙️ Strategy Parameters In Use", expanded=False):
+            st.caption("Effective parameters applied to indicators and trade markers")
+            ma_col1, ma_col2 = st.columns(2)
+            with ma_col1:
+                st.metric("Short MA Window", int(short_window))
+            with ma_col2:
+                st.metric("Long MA Window", int(long_window))
+
+            rsi_c1, rsi_c2, rsi_c3 = st.columns(3)
+            with rsi_c1:
+                st.metric("RSI Period", int(rsi_period))
+            with rsi_c2:
+                st.metric("RSI Overbought", int(rsi_overbought))
+            with rsi_c3:
+                st.metric("RSI Oversold", int(rsi_oversold))
+
+            if strategy_params:
+                st.caption("Raw session parameters (from strategy_parameters.json)")
+                st.json(strategy_params)
+            else:
+                st.info("No session-specific parameters found; using dashboard defaults.")
         
         # Create enhanced candlestick chart with detailed trade markers and indicators
         # Calculate RSI subplot ratio based on main chart ratio

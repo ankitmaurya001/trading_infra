@@ -20,6 +20,7 @@ from strategy_manager import StrategyManager
 from trading_engine import TradingEngine
 from data_fetcher import BinanceDataFetcher
 import config as cfg
+from brokers import BinanceSpotBroker
 
 
 class BinanceTradingEngine:
@@ -50,18 +51,43 @@ class BinanceTradingEngine:
             api_secret=cfg.BINANCE_SECRET_KEY
         )
         
+        # Binance credentials and environment
+        self.binance_api_key = (
+            self.config.get('binance_api_key') or os.environ.get('BINANCE_API_KEY') or cfg.BINANCE_API_KEY
+        )
+        self.binance_api_secret = (
+            self.config.get('binance_api_secret') or os.environ.get('BINANCE_API_SECRET') or cfg.BINANCE_SECRET_KEY
+        )
+        
+        # Unified trading mode with backward-compat
+        config_mode = self.config.get('trading_mode')
+        if not config_mode:
+            legacy_exec = self.config.get('execution_mode')
+            if legacy_exec in ['mock', 'paper', 'binance_testnet', 'binance_live', 'testnet', 'live']:
+                config_mode = legacy_exec
+            elif self.config.get('mock_mode', False):
+                config_mode = 'mock'
+            elif self.config.get('binance_testnet', False):
+                config_mode = 'binance_testnet'
+            else:
+                config_mode = 'binance_live'
+        mode_map = {
+            'mock': 'mock',
+            'paper': 'paper',
+            'testnet': 'binance_testnet',
+            'binance_testnet': 'binance_testnet',
+            'live': 'binance_live',
+            'binance_live': 'binance_live',
+        }
+        self.trading_mode = config_mode
+        self.execution_mode = mode_map.get(config_mode, 'mock')
+        self.mock_mode = self.execution_mode == 'mock'
+        self.is_testnet = self.execution_mode == 'binance_testnet'
+        
         # Trading state
         self.is_running = False
         self.current_data = pd.DataFrame()
         self.last_update = None
-        
-        # Mock trading settings
-        self.mock_mode = self.config.get('mock_mode', False)
-        self.mock_data = pd.DataFrame()
-        self.mock_current_index = 0
-        self.mock_start_date = None
-        self.mock_end_date = None
-        self.mock_delay = self.config.get('mock_delay', 0.01)
         
         # Trading configuration
         self.symbol = self.config.get('symbol', 'BTCUSDT')
@@ -79,6 +105,24 @@ class BinanceTradingEngine:
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
+
+        # Initialize broker based on execution_mode
+        self.broker = None
+        if self.execution_mode in ['binance_testnet', 'binance_live']:
+            self.broker = BinanceSpotBroker(
+                api_key=self.binance_api_key,
+                api_secret=self.binance_api_secret,
+                testnet=self.execution_mode == 'binance_testnet'
+            )
+            self.logger.info(f"🧩 Broker initialized for {'TESTNET' if self.is_testnet else 'LIVE'} spot trading")
+            # Hand off broker to trading engine for order routing
+            self.trading_engine.broker = self.broker
+            self.trading_engine.use_broker = True
+            # Apply risk limits from config
+            risk_cfg = self.config.get('risk', {})
+            self.trading_engine.set_risk_limits(risk_cfg)
+            # Print initial broker status
+            self._log_broker_status()
     
     def _load_config(self) -> Dict:
         """Load configuration from JSON file."""
@@ -92,7 +136,7 @@ class BinanceTradingEngine:
                 "initial_balance": 10000,
                 "max_leverage": 10,
                 "max_loss_percent": 2.0,
-                "mock_mode": False,
+                "trading_mode": "mock",
                 "mock_days_back": 10,
                 "mock_delay": 0.01,
                 "enabled_strategies": ["ma", "rsi"],
@@ -144,7 +188,13 @@ class BinanceTradingEngine:
         
         # Create session ID for this run
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        mode_suffix = "_mock" if self.mock_mode else "_live"
+        mode_lookup = {
+            'mock': '_mock',
+            'paper': '_paper',
+            'binance_testnet': '_testnet',
+            'binance_live': '_live'
+        }
+        mode_suffix = mode_lookup.get(self.execution_mode, "_live")
         self.session_id = f"{self.symbol}_{timestamp}{mode_suffix}"
         
         # Create session-specific folder
@@ -176,6 +226,34 @@ class BinanceTradingEngine:
         self.logger.info(f"Received signal {signum}. Shutting down gracefully...")
         self.stop_trading()
         sys.exit(0)
+
+    def _log_broker_status(self):
+        """Fetch and log balances and open orders to console and files."""
+        if not self.broker:
+            return
+        try:
+            is_alive = self.broker.ping()
+            self.logger.info(f"📡 Broker ping: {'OK' if is_alive else 'FAILED'}")
+        except Exception as e:
+            self.logger.warning(f"Broker ping failed: {e}")
+        try:
+            balances = self.broker.get_balances()
+            self.logger.info(f"💼 Balances: {balances}")
+            # Save balances to file
+            balances_file = os.path.join(self.session_folder, "balances.json")
+            with open(balances_file, 'w') as f:
+                json.dump(balances, f, indent=2)
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch balances: {e}")
+        try:
+            open_orders = self.broker.get_open_orders()
+            self.logger.info(f"📑 Open orders: {len(open_orders)}")
+            # Save open orders to file
+            orders_file = os.path.join(self.session_folder, "open_orders.json")
+            with open(orders_file, 'w') as f:
+                json.dump(open_orders, f, indent=2, default=str)
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch open orders: {e}")
     
     def setup_strategies(self) -> bool:
         """Setup strategies based on configuration."""
@@ -263,6 +341,7 @@ class BinanceTradingEngine:
         self.logger.info(f"📊 Symbol: {self.symbol}")
         self.logger.info(f"⏱️  Interval: {self.interval}")
         self.logger.info(f"📡 Polling Frequency: {self.polling_frequency} seconds")
+        self.logger.info(f"🎭 Execution Mode: {self.execution_mode}")
         self.logger.info(f"🎭 Mode: {'MOCK' if self.mock_mode else 'LIVE'}")
         self.logger.info(f"🎯 Active Strategies: {[s.name for s in self.strategy_manager.get_strategies()]}")
         self.logger.info(f"💰 Initial Balance: ${self.trading_engine.initial_balance:,.2f}")
@@ -271,6 +350,10 @@ class BinanceTradingEngine:
         # Setup mock data if in mock mode
         if self.mock_mode:
             self._setup_mock_data(mock_days_back)
+        else:
+            # If using broker, log status again at start
+            if self.broker:
+                self._log_broker_status()
         
         # Start the trading loop in a separate thread
         trading_thread = threading.Thread(
@@ -532,6 +615,7 @@ class BinanceTradingEngine:
             status['symbol'] = self.symbol
             status['interval'] = self.interval
             status['mock_mode'] = self.mock_mode
+            status['execution_mode'] = self.execution_mode
             
             # Add mock progress if in mock mode
             if self.mock_mode and not self.mock_data.empty:

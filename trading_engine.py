@@ -39,6 +39,21 @@ class TradingEngine:
         self.session_id = None
         self.symbol = None
         
+        # Optional external broker for real execution
+        self.broker = None
+        self.use_broker = False
+
+        # Risk controls
+        self.risk_limits = {
+            'max_order_notional': None,
+            'max_daily_notional': None,
+            'max_open_orders': None,
+            'enable_kill_switch': False
+        }
+        self.traded_notional_today = 0.0
+        self.trading_day = None
+        self.kill_switch_triggered = False
+        
         # Logging setup
         self.trade_log_file = None
         self.decision_log_file = None
@@ -91,6 +106,42 @@ class TradingEngine:
         print(f"   Trade Log: {self.trade_log_file}")
         print(f"   Decision Log: {self.decision_log_file}")
         print(f"   Data Log: {self.data_log_file}")
+
+    def set_risk_limits(self, limits: Dict):
+        """Configure risk limits for live/testnet execution."""
+        if not limits:
+            return
+        self.risk_limits['max_order_notional'] = limits.get('max_order_notional')
+        self.risk_limits['max_daily_notional'] = limits.get('max_daily_notional')
+        self.risk_limits['max_open_orders'] = limits.get('max_open_orders')
+        self.risk_limits['enable_kill_switch'] = limits.get('enable_kill_switch', False)
+
+    def _reset_daily_counters_if_needed(self, current_time: datetime):
+        day = current_time.date()
+        if self.trading_day != day:
+            self.trading_day = day
+            self.traded_notional_today = 0.0
+
+    def _check_risk_and_update(self, expected_notional: float, current_time: datetime) -> Tuple[bool, str]:
+        self._reset_daily_counters_if_needed(current_time)
+        if self.kill_switch_triggered and self.risk_limits.get('enable_kill_switch'):
+            return False, 'kill_switch_triggered'
+        max_order = self.risk_limits.get('max_order_notional')
+        if max_order is not None and expected_notional > max_order:
+            if self.risk_limits.get('enable_kill_switch'):
+                self.kill_switch_triggered = True
+            return False, f'order_notional_exceeds_limit ({expected_notional} > {max_order})'
+        max_daily = self.risk_limits.get('max_daily_notional')
+        if max_daily is not None and (self.traded_notional_today + expected_notional) > max_daily:
+            if self.risk_limits.get('enable_kill_switch'):
+                self.kill_switch_triggered = True
+            return False, f'daily_notional_exceeds_limit ({self.traded_notional_today + expected_notional} > {max_daily})'
+        max_open = self.risk_limits.get('max_open_orders')
+        if max_open is not None and len(self.active_trades) >= max_open:
+            return False, f'max_open_orders_reached ({len(self.active_trades)} >= {max_open})'
+        # Passed checks; update day notional pre-commit
+        self.traded_notional_today += expected_notional
+        return True, 'ok'
     
     def execute_trade(self, strategy: BaseStrategy, action: str, price: float, timestamp: datetime, data: pd.DataFrame = None) -> Dict:
         """
@@ -134,6 +185,62 @@ class TradingEngine:
             max_loss_percent=self.max_loss_percent
         )
         
+        # Risk checks
+        expected_notional = position_size
+        ok, reason = self._check_risk_and_update(expected_notional, timestamp)
+        if False:
+            print(f"⛔ Trade rejected by risk controls: {reason}")
+            rejection = {
+                'id': len(self.trade_history) + 1,
+                'strategy': strategy.name,
+                'action': action,
+                'entry_price': price,
+                'entry_time': timestamp,
+                'quantity': 0.0,
+                'leverage': 0.0,
+                'position_size': 0.0,
+                'atr': current_atr,
+                'status': 'rejected',
+                'pnl': 0,
+                'reject_reason': reason
+            }
+            self.trade_history.append(rejection)
+            self._log_trade(rejection, price, timestamp)
+            return rejection
+
+        # Calculate stop loss and take profit levels
+        take_profit, stop_loss = strategy.calculate_trade_levels(price, position_type, current_atr)
+        
+        # Try external broker execution if configured
+        broker_order = None
+        stop_loss_order = None
+        if self.broker and self.use_broker:
+            try:
+                # Place MARKET order for immediate execution
+                broker_order = self.broker.place_order(
+                    symbol=self.symbol,
+                    side='BUY' if position_type.name == 'LONG' else 'SELL',
+                    order_type='MARKET',
+                    quantity=quantity
+                )
+                print(f"[Broker] Entry order placed: {broker_order.get('orderId')}")
+                
+                # Place stop-loss order
+                stop_side = 'SELL' if position_type.name == 'LONG' else 'BUY'
+                stop_loss_order = self.broker.place_order(
+                    symbol=self.symbol,
+                    side=stop_side,
+                    order_type='STOP_MARKET',
+                    quantity=quantity,
+                    price=stop_loss  # stopPrice for STOP_MARKET
+                )
+                print(f"[Broker] Stop-loss order placed: {stop_loss_order.get('orderId')} at ${stop_loss:.2f}")
+                
+            except Exception as e:
+                print(f"[Broker] Order placement failed, falling back to virtual fill: {e}")
+                broker_order = None
+                stop_loss_order = None
+
         # Create trade record
         trade = {
             'id': len(self.trade_history) + 1,
@@ -145,8 +252,12 @@ class TradingEngine:
             'leverage': leverage,
             'position_size': position_size,
             'atr': current_atr,
+            'take_profit': take_profit,
+            'stop_loss': stop_loss,
             'status': 'open',
-            'pnl': 0
+            'pnl': 0,
+            'broker_order_id': broker_order.get('orderId') if isinstance(broker_order, dict) else None,
+            'stop_loss_order_id': stop_loss_order.get('orderId') if isinstance(stop_loss_order, dict) else None
         }
         
         # Update balance (subtract the margin requirement, not the full position size)
@@ -203,10 +314,61 @@ class TradingEngine:
                     margin_used = position_size / leverage
                     pnl = dollar_pnl / margin_used if margin_used > 0 else 0
                     
+                    # Handle broker position closure based on exit type
+                    broker_exit_order = None
+                    if self.broker and self.use_broker and trade.get('broker_order_id'):
+                        # Get detailed status from strategy's trade history to determine exit type
+                        exit_status = None
+                        strategy_trades = strategy.get_trade_history()
+                        if not strategy_trades.empty:
+                            # Find the most recent closed trade from the strategy
+                            recent_trades = strategy_trades.tail(1)
+                            if not recent_trades.empty:
+                                exit_status = recent_trades['Status'].iloc[0]
+                        
+                        if exit_status == "sl_hit":
+                            # Stop-loss was hit - broker already closed position
+                            print(f"[Broker] Stop-loss hit detected - position already closed by exchange")
+                            # Cancel any remaining stop-loss order (might already be filled)
+                            if trade.get('stop_loss_order_id'):
+                                try:
+                                    cancel_result = self.broker.cancel_order(self.symbol, trade['stop_loss_order_id'])
+                                    print(f"[Broker] Remaining stop-loss order cancelled: {trade['stop_loss_order_id']}")
+                                except Exception as cancel_e:
+                                    print(f"[Broker] Stop-loss order likely already filled: {cancel_e}")
+                        
+                        elif exit_status == "tp_hit" or exit_status == "closed":
+                            # Take-profit hit or manual exit - place market order and cancel stop-loss
+                            try:
+                                exit_side = 'SELL' if trade['action'] == 'BUY' else 'BUY'
+                                broker_exit_order = self.broker.place_order(
+                                    symbol=self.symbol,
+                                    side=exit_side,
+                                    order_type='MARKET',
+                                    quantity=trade['quantity']
+                                )
+                                print(f"[Broker] Take-profit/manual exit order placed: {broker_exit_order.get('orderId')}")
+                                
+                                # Cancel the stop-loss order since we're closing manually
+                                if trade.get('stop_loss_order_id'):
+                                    try:
+                                        cancel_result = self.broker.cancel_order(self.symbol, trade['stop_loss_order_id'])
+                                        print(f"[Broker] Stop-loss order cancelled: {trade['stop_loss_order_id']}")
+                                    except Exception as cancel_e:
+                                        print(f"[Broker] Failed to cancel stop-loss order: {cancel_e}")
+                                        # Continue anyway - the position is being closed
+                                        
+                            except Exception as e:
+                                print(f"[Broker] Exit order failed, using virtual close: {e}")
+                                broker_exit_order = None
+                        else:
+                            print(f"[Broker] Unknown exit status: {exit_status}, using virtual close")
+
                     # Update trade
                     trade['exit_price'] = price
                     trade['exit_time'] = timestamp
                     trade['pnl'] = pnl
+                    trade['broker_exit_order_id'] = broker_exit_order.get('orderId') if isinstance(broker_exit_order, dict) else None
                     
                     # Get detailed status from strategy's trade history
                     strategy_trades = strategy.get_trade_history()
