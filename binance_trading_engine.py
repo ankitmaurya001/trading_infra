@@ -123,6 +123,9 @@ class BinanceTradingEngine:
             self.trading_engine.set_risk_limits(risk_cfg)
             # Print initial broker status
             self._log_broker_status()
+            # If on testnet, optionally bootstrap USDT by selling 1 BTC → USDT
+            if self.is_testnet:
+                self._bootstrap_testnet_usdt()
     
     def _load_config(self) -> Dict:
         """Load configuration from JSON file."""
@@ -254,6 +257,45 @@ class BinanceTradingEngine:
                 json.dump(open_orders, f, indent=2, default=str)
         except Exception as e:
             self.logger.warning(f"Failed to fetch open orders: {e}")
+
+    def _bootstrap_testnet_usdt(self):
+        """Ensure we have some USDT on Binance Spot testnet by selling 1 BTC if needed.
+
+        This runs once at startup on testnet:
+        - If USDT balance is already present (>= 10 USDT), do nothing
+        - If BTC balance >= 1, place a MARKET SELL of 1 BTC on BTCUSDT
+        - Log results and refresh balances file
+        """
+        try:
+            balances = self.broker.get_balances()
+            usdt_bal = float(balances.get('USDT', 0.0))
+            btc_bal = float(balances.get('BTC', 0.0))
+            self.logger.info(f"🧪 Testnet bootstrap check → USDT: {usdt_bal}, BTC: {btc_bal}")
+
+            # If we already have some USDT, skip
+            if usdt_bal >= 100000:
+                self.logger.info("🧪 Testnet bootstrap: sufficient USDT available, skipping conversion")
+                return
+
+            # If we have at least 1 BTC, sell 1 BTC for USDT
+            if btc_bal >= 1.0:
+                self.logger.info("🧪 Testnet bootstrap: placing MARKET SELL for 1 BTC → USDT")
+                try:
+                    order = self.broker.place_order(
+                        symbol='BTCUSDT',
+                        side='SELL',
+                        order_type='MARKET',
+                        quantity=1.0
+                    )
+                    self.logger.info(f"🧪 Testnet bootstrap order placed: {order}")
+                except Exception as e:
+                    self.logger.warning(f"🧪 Testnet bootstrap sell failed: {e}")
+                # Re-log balances after attempt
+                self._log_broker_status()
+            else:
+                self.logger.info("🧪 Testnet bootstrap: no BTC available to convert to USDT")
+        except Exception as e:
+            self.logger.warning(f"🧪 Testnet bootstrap check failed: {e}")
     
     def setup_strategies(self) -> bool:
         """Setup strategies based on configuration."""
