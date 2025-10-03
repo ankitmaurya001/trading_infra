@@ -230,7 +230,7 @@ class TradingEngine:
                 stop_loss_order = self.broker.place_order(
                     symbol=self.symbol,
                     side=stop_side,
-                    order_type='STOP_MARKET',
+                    order_type='STOP_LOSS',
                     quantity=quantity,
                     price=stop_loss  # stopPrice for STOP_MARKET
                 )
