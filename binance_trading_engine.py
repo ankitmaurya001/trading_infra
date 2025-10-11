@@ -506,7 +506,7 @@ class BinanceTradingEngine:
                                   latest_data_timestamp > self.last_processed_timestamp)
                     
                     if has_new_data:
-                        self.logger.info(f"🆕 New data detected! Processing strategies...")
+                        #self.logger.info(f"🆕 New data detected! Processing strategies...")
                         
                         # Save only new data points to CSV
                         if self.last_processed_timestamp is not None:

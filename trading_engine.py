@@ -338,8 +338,30 @@ class TradingEngine:
                                     print(f"[Broker] Stop-loss order likely already filled: {cancel_e}")
                         
                         elif exit_status == "tp_hit" or exit_status == "closed":
-                            # Take-profit hit or manual exit - place market order and cancel stop-loss
+                            # Take-profit hit or manual exit - CANCEL STOP-LOSS FIRST, then place market order
                             try:
+                                # STEP 1: Cancel stop-loss order BEFORE placing take-profit
+                                if trade.get('stop_loss_order_id'):
+                                    try:
+                                        # Check if stop-loss still exists
+                                        open_orders = self.broker.get_open_orders(self.symbol)
+                                        order_exists = any(str(order.get('orderId')) == str(trade['stop_loss_order_id']) 
+                                                         for order in open_orders)
+                                        
+                                        if order_exists:
+                                            cancel_result = self.broker.cancel_order(self.symbol, trade['stop_loss_order_id'])
+                                            print(f"[Broker] Stop-loss order cancelled: {trade['stop_loss_order_id']}")
+                                        else:
+                                            print(f"[Broker] Stop-loss order {trade['stop_loss_order_id']} already filled or doesn't exist")
+                                            
+                                    except Exception as cancel_e:
+                                        error_msg = str(cancel_e)
+                                        if "Unknown order sent" in error_msg or "-2011" in error_msg:
+                                            print(f"[Broker] Stop-loss order {trade['stop_loss_order_id']} already filled or cancelled")
+                                        else:
+                                            print(f"[Broker] Failed to cancel stop-loss order: {cancel_e}")
+                                
+                                # STEP 2: Now place the take-profit market order
                                 exit_side = 'SELL' if trade['action'] == 'BUY' else 'BUY'
                                 broker_exit_order = self.broker.place_order(
                                     symbol=self.symbol,
@@ -348,15 +370,6 @@ class TradingEngine:
                                     quantity=trade['quantity']
                                 )
                                 print(f"[Broker] Take-profit/manual exit order placed: {broker_exit_order.get('orderId')}")
-                                
-                                # Cancel the stop-loss order since we're closing manually
-                                if trade.get('stop_loss_order_id'):
-                                    try:
-                                        cancel_result = self.broker.cancel_order(self.symbol, trade['stop_loss_order_id'])
-                                        print(f"[Broker] Stop-loss order cancelled: {trade['stop_loss_order_id']}")
-                                    except Exception as cancel_e:
-                                        print(f"[Broker] Failed to cancel stop-loss order: {cancel_e}")
-                                        # Continue anyway - the position is being closed
                                         
                             except Exception as e:
                                 print(f"[Broker] Exit order failed, using virtual close: {e}")
