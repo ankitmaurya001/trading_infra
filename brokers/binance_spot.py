@@ -92,16 +92,200 @@ class BinanceSpotBroker:
         aggregate trades across symbols using Binance's my_trades endpoint per symbol.
 
         Note: Binance Spot API requires symbol for my_trades. If symbol is None, this returns an empty list.
+        Handles Binance's 24-hour limitation by chunking requests when needed.
         """
         if symbol is None:
             return []
-        params: Dict[str, Any] = {"symbol": symbol}
-        if start_time is not None:
-            params["startTime"] = start_time
-        if end_time is not None:
-            params["endTime"] = end_time
-        if limit is not None:
-            params["limit"] = limit
-        return self.client.get_my_trades(**params)
+        
+        # If no time range specified, get recent trades
+        if start_time is None and end_time is None:
+            params: Dict[str, Any] = {"symbol": symbol}
+            if limit is not None:
+                params["limit"] = limit
+            return self.client.get_my_trades(**params)
+        
+        # Handle 24-hour limitation by chunking requests
+        all_trades = []
+        current_start = start_time
+        chunk_size_ms = 24 * 60 * 60 * 1000  # 24 hours in milliseconds
+        
+        while current_start is not None and (end_time is None or current_start < end_time):
+            current_end = min(current_start + chunk_size_ms, end_time) if end_time else current_start + chunk_size_ms
+            
+            params: Dict[str, Any] = {
+                "symbol": symbol,
+                "startTime": current_start,
+                "endTime": current_end
+            }
+            if limit is not None:
+                params["limit"] = limit
+            
+            try:
+                chunk_trades = self.client.get_my_trades(**params)
+                all_trades.extend(chunk_trades)
+                
+                # If we got fewer trades than requested, we've reached the end
+                if len(chunk_trades) < (limit or 1000):
+                    break
+                    
+            except Exception as e:
+                # If we hit an error, try without time constraints
+                if "More than 24 hours" in str(e):
+                    params.pop("startTime", None)
+                    params.pop("endTime", None)
+                    chunk_trades = self.client.get_my_trades(**params)
+                    all_trades.extend(chunk_trades)
+                    break
+                else:
+                    raise e
+            
+            current_start = current_end + 1
+            
+            # Safety check to prevent infinite loops
+            if len(all_trades) > (limit or 10000):
+                break
+        
+        # Sort by time and apply limit if needed
+        all_trades.sort(key=lambda x: x.get('time', 0))
+        if limit is not None and len(all_trades) > limit:
+            all_trades = all_trades[-limit:]
+            
+        return all_trades
+
+    def get_all_orders(self, symbol: Optional[str] = None, start_time: Optional[int] = None, end_time: Optional[int] = None, limit: Optional[int] = None):
+        """
+        Fetch all orders (historical and current) for a symbol.
+        Handles Binance's 24-hour limitation by chunking requests when needed.
+        
+        Args:
+            symbol: Trading symbol (required by Binance API)
+            start_time: Start time in milliseconds
+            end_time: End time in milliseconds  
+            limit: Maximum number of orders to return (default 500, max 1000)
+            
+        Returns:
+            List of order dictionaries
+        """
+        if symbol is None:
+            return []
+        
+        # If no time range specified, get recent orders
+        if start_time is None and end_time is None:
+            params: Dict[str, Any] = {"symbol": symbol}
+            if limit is not None:
+                params["limit"] = limit
+            return self.client.get_all_orders(**params)
+        
+        # Handle 24-hour limitation by chunking requests
+        all_orders = []
+        current_start = start_time
+        chunk_size_ms = 24 * 60 * 60 * 1000  # 24 hours in milliseconds
+        
+        while current_start is not None and (end_time is None or current_start < end_time):
+            current_end = min(current_start + chunk_size_ms, end_time) if end_time else current_start + chunk_size_ms
+            
+            params: Dict[str, Any] = {
+                "symbol": symbol,
+                "startTime": current_start,
+                "endTime": current_end
+            }
+            if limit is not None:
+                params["limit"] = limit
+            
+            try:
+                chunk_orders = self.client.get_all_orders(**params)
+                all_orders.extend(chunk_orders)
+                
+                # If we got fewer orders than requested, we've reached the end
+                if len(chunk_orders) < (limit or 1000):
+                    break
+                    
+            except Exception as e:
+                # If we hit an error, try without time constraints
+                if "More than 24 hours" in str(e):
+                    params.pop("startTime", None)
+                    params.pop("endTime", None)
+                    chunk_orders = self.client.get_all_orders(**params)
+                    all_orders.extend(chunk_orders)
+                    break
+                else:
+                    raise e
+            
+            current_start = current_end + 1
+            
+            # Safety check to prevent infinite loops
+            if len(all_orders) > (limit or 10000):
+                break
+        
+        # Sort by time and apply limit if needed
+        all_orders.sort(key=lambda x: x.get('time', 0))
+        if limit is not None and len(all_orders) > limit:
+            all_orders = all_orders[-limit:]
+            
+        return all_orders
+
+    def get_all_orders_all_symbols(self, start_time: Optional[int] = None, end_time: Optional[int] = None, limit: Optional[int] = None, max_symbols: int = 50):
+        """
+        Fetch all orders across multiple symbols.
+        This method gets orders from the most active trading pairs.
+        
+        Args:
+            start_time: Start time in milliseconds
+            end_time: End time in milliseconds  
+            limit: Maximum number of orders per symbol
+            max_symbols: Maximum number of symbols to check
+            
+        Returns:
+            List of order dictionaries from all symbols
+        """
+        all_orders = []
+        
+        # Get list of active trading pairs
+        try:
+            exchange_info = self.client.get_exchange_info()
+            symbols = [symbol['symbol'] for symbol in exchange_info.get('symbols', [])]
+            
+            # Filter for USDT pairs and limit the number
+            usdt_symbols = [s for s in symbols if s.endswith('USDT')][:max_symbols]
+            
+            for symbol in usdt_symbols:
+                try:
+                    symbol_orders = self.get_all_orders(
+                        symbol=symbol,
+                        start_time=start_time,
+                        end_time=end_time,
+                        limit=limit
+                    )
+                    all_orders.extend(symbol_orders)
+                    
+                    # Stop if we have enough orders
+                    if limit and len(all_orders) >= limit * 2:  # Get a bit more than needed
+                        break
+                        
+                except Exception as e:
+                    # Skip symbols that fail (might not have trading history)
+                    continue
+                    
+        except Exception as e:
+            # Fallback: try common symbols
+            common_symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT']
+            for symbol in common_symbols:
+                try:
+                    symbol_orders = self.get_all_orders(
+                        symbol=symbol,
+                        start_time=start_time,
+                        end_time=end_time,
+                        limit=limit
+                    )
+                    all_orders.extend(symbol_orders)
+                except Exception:
+                    continue
+        
+        # Sort by time and apply limit if needed
+        all_orders.sort(key=lambda x: x.get('time', 0), reverse=True)
+        if limit and len(all_orders) > limit:
+            all_orders = all_orders[:limit]
+            
+        return all_orders
 
 

@@ -37,4 +37,10 @@ class Broker(Protocol):
     def get_account_trades(self, symbol: Optional[str] = None, start_time: Optional[int] = None, end_time: Optional[int] = None, limit: Optional[int] = None) -> Any:
         ...
 
+    def get_all_orders(self, symbol: Optional[str] = None, start_time: Optional[int] = None, end_time: Optional[int] = None, limit: Optional[int] = None) -> Any:
+        ...
+
+    def get_all_orders_all_symbols(self, start_time: Optional[int] = None, end_time: Optional[int] = None, limit: Optional[int] = None, max_symbols: int = 50) -> Any:
+        ...
+
 
