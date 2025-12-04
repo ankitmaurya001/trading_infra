@@ -157,8 +157,8 @@ class KiteTradingEngine:
         """Setup comprehensive logging system."""
         base_log_folder = self.config.get('log_folder', 'logs')
         
-        # Create session ID for this run
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Create session ID for this run using IST timezone
+        timestamp = datetime.now(self.ist_timezone).strftime("%Y%m%d_%H%M%S")
         mode_suffix = "_mock" if self.mock_mode else "_live"
         self.session_id = f"{self.symbol}_{timestamp}{mode_suffix}"
         
@@ -376,7 +376,7 @@ class KiteTradingEngine:
                 'interval': self.config.get('interval', '15minute'),
                 'enabled_strategies': self.config.get('enabled_strategies', []),
                 'strategy_parameters': self.strategy_manager.optimized_params,
-                'config_timestamp': datetime.now().isoformat(),
+                'config_timestamp': datetime.now(self.ist_timezone).isoformat(),
                 'description': 'Strategy parameters used during this trading session'
             }
             
@@ -446,13 +446,14 @@ class KiteTradingEngine:
         """Setup mock data for testing."""
         self.logger.info(f"🎭 Setting up mock data for {self.symbol}...")
         
-        # Calculate date range
-        end_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # Calculate date range using IST timezone consistently
+        ist_now = datetime.now(self.ist_timezone)
+        end_date = (ist_now + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
         
         if self.interval in ["5minute", "15minute", "30minute", "1hour"]:
-            start_date = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d %H:%M:%S')
+            start_date = (ist_now - timedelta(days=60)).strftime('%Y-%m-%d %H:%M:%S')
         else:
-            start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S')
+            start_date = (ist_now - timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S')
         
         self.logger.info(f"📥 Fetching historical data from {start_date} to {end_date}")
         
@@ -502,8 +503,9 @@ class KiteTradingEngine:
         """Live trading loop that fetches real-time data."""
         while self.is_running:
             try:
-                current_time = datetime.now()
+                # Use IST timezone consistently for all operations
                 ist_now = datetime.now(self.ist_timezone)
+                current_time = ist_now  # Use IST time for consistency
                 
                 # Check if market is open before polling
                 if not self._is_market_open():
@@ -527,13 +529,17 @@ class KiteTradingEngine:
                 
                 self.logger.debug(f"🕐 [{ist_now.strftime('%Y-%m-%d %H:%M:%S IST')}] Market is open ✓")
                 
-                # Calculate date range for data fetching
+                # Calculate date range for data fetching using IST timezone consistently
+                # Use IST for all date calculations to avoid timezone issues across different machines
                 if self.interval in ["5minute", "15minute", "30minute", "1hour"]:
-                    start_date = (current_time - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+                    start_date = (ist_now - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
                 else:
-                    start_date = (current_time - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')
+                    start_date = (ist_now - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')
                 
-                end_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                # For end_date, add 1 day to ensure we get the latest tick data
+                # This handles timezone edge cases where the API might need tomorrow's date
+                # to return today's last tick, especially near day boundaries
+                end_date = (ist_now + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
                 
                 self.logger.debug(f"📥 Fetching {self.interval} data for {self.symbol}")
                 
@@ -679,7 +685,8 @@ class KiteTradingEngine:
     def _calculate_dynamic_polling_frequency(self) -> int:
         """Calculate dynamic polling frequency based on time until next tick."""
         try:
-            current_time = datetime.now()
+            # Use IST timezone for all time calculations
+            current_time = datetime.now(self.ist_timezone)
             
             # Convert interval to minutes
             interval_minutes = {
