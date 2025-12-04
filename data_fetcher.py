@@ -224,7 +224,15 @@ class KiteDataFetcher:
             return df
             
         except Exception as e:
-            logging.error(f"Error fetching historical data for {symbol}: {e}")
+            error_msg = str(e)
+            # Log the full error for debugging
+            logging.error(f"Error fetching historical data for {symbol}: {error_msg}")
+            
+            # Re-raise authentication errors so they can be handled upstream
+            if any(keyword in error_msg.lower() for keyword in ['api_key', 'access_token', 'authentication', 'unauthorized', 'token']):
+                logging.warning(f"⚠️  Authentication error detected: {error_msg}")
+                raise  # Re-raise to allow upstream handling
+            
             return pd.DataFrame()
     
     def _get_instrument_token(self, symbol: str) -> Optional[int]:

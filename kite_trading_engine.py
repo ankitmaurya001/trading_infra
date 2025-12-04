@@ -15,6 +15,7 @@ import sys
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import logging
+import pytz
 
 from strategy_manager import StrategyManager
 from trading_engine import TradingEngine
@@ -28,7 +29,7 @@ class KiteTradingEngine:
     Reads configuration from file and saves all status to logs.
     """
     
-    def __init__(self, config_file: str = "trading_config.json"):
+    def __init__(self, config_file: str = "trading_config_kite.json"):
         """
         Initialize the trading engine.
         
@@ -75,9 +76,17 @@ class KiteTradingEngine:
         self.polling_frequency = self.config.get('polling_frequency', 60)
         self.session_id = None
         
+        # Exchange and market hours configuration
+        self.exchange = cfg.KITE_EXCHANGE
+        self.ist_timezone = pytz.timezone('Asia/Kolkata')
+        
         # Data tracking for efficient processing
         self.last_processed_timestamp = None
         self.last_processed_index = -1
+        
+        # Token refresh tracking
+        self.last_auth_error_time = None
+        self.auth_error_count = 0
         
         # Setup logging
         self._setup_logging()
@@ -182,6 +191,141 @@ class KiteTradingEngine:
         self.logger.info(f"Received signal {signum}. Shutting down gracefully...")
         self.stop_trading()
         sys.exit(0)
+    
+    def _is_market_open(self) -> bool:
+        """
+        Check if the market is currently open based on exchange type.
+        
+        Returns:
+            bool: True if market is open, False otherwise
+        """
+        try:
+            # Get current time in IST
+            ist_now = datetime.now(self.ist_timezone)
+            current_time = ist_now.time()
+            current_weekday = ist_now.weekday()  # 0=Monday, 6=Sunday
+            
+            # Check if it's a weekday (Monday=0 to Friday=4)
+            if current_weekday >= 5:  # Saturday or Sunday
+                return False
+            
+            # Define market hours based on exchange
+            if self.exchange == "MCX":
+                # MCX: 9:00 AM to 11:55 PM IST (weekdays)
+                market_open = datetime.strptime("09:00", "%H:%M").time()
+                market_close = datetime.strptime("23:55", "%H:%M").time()
+            elif self.exchange in ["NSE", "BSE"]:
+                # NSE/BSE: 9:15 AM to 3:30 PM IST (weekdays)
+                market_open = datetime.strptime("09:15", "%H:%M").time()
+                market_close = datetime.strptime("15:30", "%H:%M").time()
+            else:
+                # Default to NSE hours for unknown exchanges
+                market_open = datetime.strptime("09:15", "%H:%M").time()
+                market_close = datetime.strptime("15:30", "%H:%M").time()
+            
+            # Check if current time is within market hours
+            is_open = market_open <= current_time <= market_close
+            
+            return is_open
+            
+        except Exception as e:
+            self.logger.error(f"Error checking market hours: {e}")
+            # On error, assume market is closed to be safe
+            return False
+    
+    def _get_time_until_market_open(self) -> Optional[timedelta]:
+        """
+        Calculate time until market opens next.
+        
+        Returns:
+            timedelta: Time until market opens, or None if market is already open
+        """
+        try:
+            if self._is_market_open():
+                return None
+            
+            ist_now = datetime.now(self.ist_timezone)
+            current_time = ist_now.time()
+            current_weekday = ist_now.weekday()
+            
+            # Define market hours based on exchange
+            if self.exchange == "MCX":
+                market_open_time = datetime.strptime("09:00", "%H:%M").time()
+            elif self.exchange in ["NSE", "BSE"]:
+                market_open_time = datetime.strptime("09:15", "%H:%M").time()
+            else:
+                market_open_time = datetime.strptime("09:15", "%H:%M").time()
+            
+            # Calculate next market open time
+            if current_weekday >= 5:  # Weekend
+                # Next Monday
+                days_until_monday = (7 - current_weekday) % 7
+                if days_until_monday == 0:
+                    days_until_monday = 7
+                next_open = ist_now.replace(hour=market_open_time.hour, 
+                                          minute=market_open_time.minute, 
+                                          second=0, 
+                                          microsecond=0) + timedelta(days=days_until_monday)
+            elif current_time > market_open_time:
+                # Market closed for today, next open is tomorrow
+                next_open = ist_now.replace(hour=market_open_time.hour, 
+                                          minute=market_open_time.minute, 
+                                          second=0, 
+                                          microsecond=0) + timedelta(days=1)
+            else:
+                # Market opens today
+                next_open = ist_now.replace(hour=market_open_time.hour, 
+                                          minute=market_open_time.minute, 
+                                          second=0, 
+                                          microsecond=0)
+            
+            time_until_open = next_open - ist_now
+            return time_until_open
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating time until market open: {e}")
+            return None
+    
+    def _refresh_token_if_needed(self, error_message: str = None):
+        """
+        Refresh authentication token if we're getting authentication errors.
+        
+        Args:
+            error_message: Error message from the API call
+        """
+        try:
+            # Check if error is related to authentication
+            auth_keywords = ['api_key', 'access_token', 'authentication', 'unauthorized', 'token']
+            is_auth_error = error_message and any(keyword in str(error_message).lower() for keyword in auth_keywords)
+            
+            if is_auth_error:
+                current_time = time.time()
+                
+                # Only refresh if we haven't refreshed recently (avoid infinite loops)
+                if (self.last_auth_error_time is None or 
+                    current_time - self.last_auth_error_time > 300):  # 5 minutes cooldown
+                    
+                    self.logger.warning("🔄 Authentication error detected. Attempting to refresh token...")
+                    self.auth_error_count += 1
+                    self.last_auth_error_time = current_time
+                    
+                    # Re-authenticate
+                    self.data_fetcher.authenticate()
+                    self.logger.info("✅ Token refreshed successfully!")
+                    self.auth_error_count = 0  # Reset on success
+                else:
+                    self.logger.warning(f"⚠️  Authentication error but too soon to refresh again. Waiting...")
+            else:
+                # Reset error count if it's not an auth error
+                self.auth_error_count = 0
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error refreshing token: {e}")
+            # If refresh fails multiple times, wait longer
+            if self.auth_error_count >= 3:
+                self.logger.error("❌ Multiple authentication failures. Waiting 30 minutes before retry...")
+                time.sleep(1800)  # Wait 30 minutes
+                self.auth_error_count = 0
     
     def setup_strategies(self) -> bool:
         """Setup strategies based on configuration."""
@@ -359,7 +503,29 @@ class KiteTradingEngine:
         while self.is_running:
             try:
                 current_time = datetime.now()
-                self.logger.debug(f"🕐 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}]")
+                ist_now = datetime.now(self.ist_timezone)
+                
+                # Check if market is open before polling
+                if not self._is_market_open():
+                    time_until_open = self._get_time_until_market_open()
+                    if time_until_open:
+                        hours_until = time_until_open.total_seconds() / 3600
+                        if hours_until > 1:
+                            self.logger.info(f"🌙 Market is closed. Next open in {hours_until:.1f} hours. Waiting...")
+                            # Sleep for 1 hour or until market opens, whichever is shorter
+                            sleep_time = min(3600, time_until_open.total_seconds())
+                            time.sleep(sleep_time)
+                        else:
+                            # Less than 1 hour, sleep for 5 minutes and check again
+                            self.logger.info(f"🌙 Market is closed. Next open in {time_until_open}. Waiting 5 minutes...")
+                            time.sleep(300)
+                    else:
+                        # Shouldn't happen, but sleep anyway
+                        self.logger.warning("⚠️  Market status check failed. Waiting 5 minutes...")
+                        time.sleep(300)
+                    continue
+                
+                self.logger.debug(f"🕐 [{ist_now.strftime('%Y-%m-%d %H:%M:%S IST')}] Market is open ✓")
                 
                 # Calculate date range for data fetching
                 if self.interval in ["5minute", "15minute", "30minute", "1hour"]:
@@ -371,11 +537,23 @@ class KiteTradingEngine:
                 
                 self.logger.debug(f"📥 Fetching {self.interval} data for {self.symbol}")
                 
-                data = self.data_fetcher.fetch_historical_data(
-                    self.symbol, start_date, end_date, interval=self.interval
-                )
+                try:
+                    data = self.data_fetcher.fetch_historical_data(
+                        self.symbol, start_date, end_date, interval=self.interval
+                    )
+                except Exception as fetch_error:
+                    error_msg = str(fetch_error)
+                    self.logger.error(f"❌ Error fetching data: {error_msg}")
+                    # Check if it's an authentication error and refresh token
+                    self._refresh_token_if_needed(error_msg)
+                    data = pd.DataFrame()  # Set empty DataFrame to continue loop
+                
+                # Initialize has_new_data to False
+                has_new_data = False
+                
                 # Ignore last tick of data, as tick not yet closed
-                data = data.iloc[:-1]
+                if not data.empty:
+                    data = data.iloc[:-1]
                 
                 if not data.empty:
                     self.logger.debug(f"✅ Successfully fetched {len(data)} data points")
@@ -417,20 +595,29 @@ class KiteTradingEngine:
                         self.last_update = current_time
                 else:
                     self.logger.warning(f"⚠️  No data received for {self.symbol}")
+                    # Refresh token if we're getting empty data (might be auth issue)
+                    self._refresh_token_if_needed("Empty data returned")
                 
                 # Calculate dynamic polling frequency
-                if not has_new_data:
-                    dynamic_polling_frequency = 5
-                else:
+                if not data.empty and has_new_data:
                     dynamic_polling_frequency = self._calculate_dynamic_polling_frequency()
+                else:
+                    # If no new data or empty data, poll less frequently
+                    dynamic_polling_frequency = min(60, self.polling_frequency)
                 
                 # Wait for next polling cycle
                 self.logger.debug(f"⏳ Waiting {dynamic_polling_frequency} seconds until next update...")
                 time.sleep(dynamic_polling_frequency)
                 
             except Exception as e:
-                self.logger.error(f"❌ Error in trading loop: {str(e)}")
-                time.sleep(self.polling_frequency)
+                error_msg = str(e)
+                self.logger.error(f"❌ Error in trading loop: {error_msg}")
+                
+                # Check if it's an authentication error
+                self._refresh_token_if_needed(error_msg)
+                
+                # Wait before retrying
+                time.sleep(min(60, self.polling_frequency))
     
     def _mock_trading_loop(self):
         """Mock trading loop that processes historical data sequentially."""
@@ -582,7 +769,7 @@ def main():
     parser = argparse.ArgumentParser(description="Binance Trading Engine")
     parser.add_argument(
         "--config", 
-        default="kite_trading_config.json",
+        default="trading_config_kite.json",
         help="Path to configuration file (default: kite_trading_config.json)"
     )
     
