@@ -145,7 +145,7 @@ class KiteDataFetcher:
             "skip_session": True,
         }
         totp_response = session.post("https://kite.zerodha.com/api/twofa", totp_payload)
-        print(f"[INFO] totp_respone = {totp_response}")
+        print(f"[INFO] totp_response = {totp_response}")
 
         request_token = None
         # Step 4: Extract request token
@@ -156,7 +156,12 @@ class KiteDataFetcher:
         except Exception as e:
             import re
             pattern = r"request_token=[A-Za-z0-9]+"
-            query_parms = parse_qs(re.findall(pattern, str(e))[0])
+            matches = re.findall(pattern, str(e))
+            if len(matches) == 0:
+                raise ValueError(f"[ERROR] Could not extract request_token from exception: {e}")
+            query_parms = parse_qs(matches[0])
+        if "request_token" not in query_parms:
+            raise ValueError("[ERROR] request_token not found in query parameters")
         request_token = query_parms["request_token"][0]
         print(f"[INFO] request_token = {request_token}")
 
@@ -201,10 +206,6 @@ class KiteDataFetcher:
             print(f"[INFO] instrument_token: {instrument_token}")
             if not instrument_token:
                 raise ValueError(f"Instrument token not found for {symbol}")
-            
-            # Convert dates to datetime objects
-            # start_dt = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-            # end_dt = (datetime.now() +timedelta(days=1)).strftime("%Y-%m-%d")
             
             # Fetch historical data
             data = self.kite.historical_data(
@@ -252,10 +253,23 @@ class KiteDataFetcher:
         # Search for the instrument
         try:
             instruments = self.kite.instruments(self.exchange)
+            
+            # Try exact match first
             for instrument in instruments:
                 if instrument['tradingsymbol'] == symbol:
                     self.instrument_tokens[symbol] = instrument['instrument_token']
                     return instrument['instrument_token']
+            
+            # Try partial match (symbol contains search term)
+            matching_symbols = [inst['tradingsymbol'] for inst in instruments if symbol.upper() in inst['tradingsymbol'].upper() or inst['tradingsymbol'].upper() in symbol.upper()]
+            
+            if matching_symbols:
+                # Use the first match (could be improved with better matching logic)
+                matched_symbol = matching_symbols[0]
+                for instrument in instruments:
+                    if instrument['tradingsymbol'] == matched_symbol:
+                        self.instrument_tokens[symbol] = instrument['instrument_token']
+                        return instrument['instrument_token']
         except Exception as e:
             logging.error(f"Error searching for instrument {symbol}: {e}")
         

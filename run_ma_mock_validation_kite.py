@@ -56,7 +56,7 @@ import config as cfg
 # GLOBAL CONFIGURATION - Edit these values to set defaults
 # ============================================================================
 # You can override these via command-line arguments if needed
-DEFAULT_SYMBOL = "NATURALGAS25DECFUT"  # Default Indian stock symbol
+DEFAULT_SYMBOL = "CRUDEOILM25DECFUT"  # Default Indian stock symbol
 DEFAULT_EXCHANGE = "MCX"  # Default exchange (NSE, BSE, MCX)
 # use 30 days ago (Kite uses YYYY-MM-DD format)
 DEFAULT_START_DATE = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
@@ -64,7 +64,7 @@ DEFAULT_START_DATE = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 DEFAULT_END_DATE = datetime.now().strftime("%Y-%m-%d")
 DEFAULT_INTERVAL = "15m"  # Will be converted to "15minute" for Kite
 DEFAULT_PARAMS = [
-    {"short_window": 33, "long_window": 60, "risk_reward_ratio": 6.0}
+    {"short_window": 26, "long_window": 41, "risk_reward_ratio": 6.0}
 ]
 # ============================================================================
 
@@ -221,6 +221,7 @@ def run_ma_mock(
     print(f"📅 Data range: {data.index[0]} to {data.index[-1]}")
 
     results: List[Dict[str, Any]] = []
+    failed_results: List[Dict[str, Any]] = []  # Track failed parameter sets
 
     for idx, params in enumerate(params_list, start=1):
         print("-" * 80)
@@ -235,11 +236,23 @@ def run_ma_mock(
         ok = validator.strategy_manager.set_manual_parameters(ma_params=params_with_fee)
         if not ok:
             print(f"❌ Failed to set manual MA parameters for set {idx}")
+            failed_results.append({
+                "parameter_set": idx,
+                "parameters": params,
+                "error": "Failed to set manual MA parameters",
+                "stage": "parameter_setup"
+            })
             continue
 
         strategies = validator.strategy_manager.initialize_strategies(["ma"])
         if not strategies:
             print(f"❌ Failed to initialize MA strategy for set {idx}")
+            failed_results.append({
+                "parameter_set": idx,
+                "parameters": params,
+                "error": "Failed to initialize MA strategy",
+                "stage": "strategy_initialization"
+            })
             continue
 
         strategy = strategies[0]
@@ -324,12 +337,19 @@ def run_ma_mock(
                     "end_date": end_date_kite,
                     "interval": kite_interval,
                     "results": serializable,
+                    "failed_results": failed_results,  # Include failed parameter sets
                 },
                 f,
                 indent=2,
                 default=str,
             )
         print(f"💾 Saved results to {out_json}")
+
+    # Report failed parameter sets
+    if failed_results:
+        print(f"\n⚠️  {len(failed_results)} parameter set(s) failed:")
+        for failed in failed_results:
+            print(f"   - Set {failed['parameter_set']}: {failed['error']} (stage: {failed['stage']})")
 
     print("\n🎯 Completed MA mock validation.")
     return {
@@ -339,6 +359,7 @@ def run_ma_mock(
         "end_date": end_date_kite,
         "interval": kite_interval,
         "results": results,
+        "failed_results": failed_results,  # Include failed parameter sets in return value
     }
 
 

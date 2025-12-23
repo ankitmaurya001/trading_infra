@@ -130,7 +130,7 @@ class BinanceTradingEngine:
     def _load_config(self) -> Dict:
         """Load configuration from JSON file."""
         if not os.path.exists(self.config_file):
-            logger.info(f"Creating default config file: {self.config_file}")
+            print(f"Creating default config file: {self.config_file}")
             # Create default config if it doesn't exist
             default_config = {
                 "symbol": "BTCUSDT",
@@ -392,6 +392,12 @@ class BinanceTradingEngine:
         # Setup mock data if in mock mode
         if self.mock_mode:
             self._setup_mock_data(mock_days_back)
+            # Check if mock data was successfully loaded
+            if self.mock_data.empty:
+                self.logger.error("❌ Failed to setup mock data. Cannot start mock trading.")
+                self.is_running = False
+                return False
+            self.logger.info(f"✅ Mock data setup successful with {len(self.mock_data)} data points")
         else:
             # If using broker, log status again at start
             if self.broker:

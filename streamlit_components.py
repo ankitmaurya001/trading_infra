@@ -763,7 +763,8 @@ def create_live_trading_chart(current_data: pd.DataFrame, trade_history_df: pd.D
                 delta = strategy_data['Close'].diff()
                 gain = (delta.where(delta > 0, 0)).rolling(window=strategy.period).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(window=strategy.period).mean()
-                rs = gain / loss
+                # Prevent division by zero: use small epsilon when loss is 0
+                rs = gain / (loss + 1e-8)
                 strategy_data['RSI'] = 100 - (100 / (1 + rs))
         
         # Add strategy-specific indicators

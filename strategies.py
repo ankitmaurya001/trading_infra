@@ -358,7 +358,9 @@ class BaseStrategy(ABC):
                 downside_deviation = np.std(downside_returns, ddof=1)
                 sortino_ratio = mean_return / max(downside_deviation, EPSILON)
             else:
-                sortino_ratio = float('inf') if mean_return > 0 else 0
+                # BUG FIX: Cap sortino_ratio at 999.0 instead of inf (like profit_factor)
+                # Infinite values cause issues in composite score calculations
+                sortino_ratio = 999.0 if mean_return > 0 else 0
         else:
             sortino_ratio = 0
         
@@ -379,13 +381,21 @@ class BaseStrategy(ABC):
         
         # Calmar ratio (annualized return / max drawdown)
         # Calculate trading days between first and last trade for proper annualization
+        # BUG FIX: Require minimum trading days for meaningful annualization
+        # Very short periods (e.g., 1-2 days) produce extreme annualized values
+        MIN_TRADING_DAYS_FOR_ANNUALIZATION = 7  # At least 1 week of data
+        
         if len(closed_trades) > 1:
             first_trade_date = min(t.exit_date for t in closed_trades if t.exit_date is not None)
             last_trade_date = max(t.exit_date for t in closed_trades if t.exit_date is not None)
             trading_days = (last_trade_date - first_trade_date).days
-            if trading_days > 0:
+            if trading_days >= MIN_TRADING_DAYS_FOR_ANNUALIZATION:
                 # Correct annualization: (total_multiplier ** (365 / trading_days)) - 1
                 annualized_return = (total_multiplier ** (365 / trading_days)) - 1
+            elif trading_days > 0:
+                # Short period: use conservative annualization with minimum period
+                # This prevents 1 day of +1% becoming +3778% annualized
+                annualized_return = (total_multiplier ** (365 / MIN_TRADING_DAYS_FOR_ANNUALIZATION)) - 1
             else:
                 # Fallback: use geometric mean with daily assumption
                 annualized_return = (1 + geometric_mean_return) ** 252 - 1
@@ -393,7 +403,10 @@ class BaseStrategy(ABC):
             # Fallback: use geometric mean with daily assumption
             annualized_return = (1 + geometric_mean_return) ** 252 - 1
         
+        # Cap extreme calmar ratios (annualized return can still be very high)
         calmar_ratio = annualized_return / max(max_drawdown, EPSILON)
+        # BUG FIX: Cap calmar_ratio to prevent extreme values dominating optimization
+        calmar_ratio = min(calmar_ratio, 999.0)
         
         return {
             "total_trades": total_trades,
@@ -790,7 +803,8 @@ class RSIStrategy(BaseStrategy):
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=self.period).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=self.period).mean()
-        rs = gain / loss
+        # Prevent division by zero: use EPSILON when loss is 0
+        rs = gain / (loss + EPSILON)
         df['RSI'] = 100 - (100 / (1 + rs))
         
         # Calculate ATR
@@ -921,7 +935,8 @@ class RSIStrategy(BaseStrategy):
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=self.period).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=self.period).mean()
-        rs = gain / loss
+        # Prevent division by zero: use EPSILON when loss is 0
+        rs = gain / (loss + EPSILON)
         df['RSI'] = 100 - (100 / (1 + rs))
         
         # Add signal column (empty for indicators only)

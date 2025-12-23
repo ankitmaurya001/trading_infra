@@ -244,9 +244,20 @@ class TradingDashboard:
                 print(f"   ⚠️ Trade {trade_id} has only {len(group)} record(s), skipping")
                 continue
             
-            # Get entry and exit records
-            entry_record = group[group['action'].isin(['BUY', 'SELL'])].iloc[0]
-            exit_record = group[group['action'] == 'EXIT'].iloc[0]
+            # Get entry and exit records with proper empty checks
+            entry_records = group[group['action'].isin(['BUY', 'SELL'])]
+            exit_records = group[group['action'] == 'EXIT']
+            
+            if entry_records.empty:
+                print(f"   ⚠️ Trade {trade_id} has no entry record (BUY/SELL), skipping")
+                continue
+            
+            if exit_records.empty:
+                print(f"   ⚠️ Trade {trade_id} has no exit record (EXIT), skipping")
+                continue
+            
+            entry_record = entry_records.iloc[0]
+            exit_record = exit_records.iloc[0]
             
             # Create combined trade record
             combined_trade = {
@@ -1104,7 +1115,8 @@ def main():
             delta = prices.diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-            rs = gain / loss
+            # Prevent division by zero: use small epsilon when loss is 0
+            rs = gain / (loss + 1e-8)
             rsi = 100 - (100 / (1 + rs))
             return rsi
         

@@ -30,6 +30,13 @@ from strategies import MovingAverageCrossover
 from strategy_optimizer import StrategyOptimizer
 import config as cfg
 
+# Import neighborhood-aware scoring constants
+NEIGHBORHOOD_RADIUS = cfg.NEIGHBORHOOD_RADIUS
+DISTANCE_WEIGHT_POWER = cfg.DISTANCE_WEIGHT_POWER
+OWN_SCORE_WEIGHT = cfg.OWN_SCORE_WEIGHT
+NEIGHBORHOOD_WEIGHT = cfg.NEIGHBORHOOD_WEIGHT
+NEGATIVE_PENALTY_WEIGHT = cfg.NEGATIVE_PENALTY_WEIGHT
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -127,14 +134,38 @@ class MAOptimization3DVisualizer:
             if np.isinf(sharpe_ratio) or np.isnan(sharpe_ratio):
                 sharpe_ratio = 0
             
-            # Calculate composite score with weights
+            # CRITICAL BUG FIX: Normalize metrics to comparable scales (0-1 range)
+            # Without normalization, calmar_ratio can dominate (can be 1000+)
+            # while win_rate is only 0-1
+            
+            # Normalize sharpe_ratio: typical range -3 to +3, map to 0-1
+            sharpe_normalized = np.clip((sharpe_ratio + 3) / 6, 0, 1)
+            
+            # Normalize calmar_ratio: typical range 0 to 10, map to 0-1
+            # Clamp extreme values to prevent domination
+            calmar_normalized = np.clip(calmar_ratio / 10, 0, 1)
+            
+            # Normalize profit_factor: typical range 0 to 3, map to 0-1
+            # Values above 3 are excellent but shouldn't dominate
+            profit_factor_normalized = np.clip(profit_factor / 3, 0, 1)
+            
+            # win_rate is already 0-1
+            win_rate_normalized = np.clip(win_rate, 0, 1)
+            
+            # Normalize geometric_mean_return: typical range -0.05 to +0.05, map to 0-1
+            gmr_normalized = np.clip((geometric_mean_return + 0.05) / 0.10, 0, 1)
+            
+            # max_drawdown is 0-1, invert so lower drawdown = higher score
+            drawdown_score = np.clip(1 - max_drawdown, 0, 1)
+            
+            # Calculate composite score with normalized metrics
             composite_score = (
-                0.25 * sharpe_ratio +           # Risk-adjusted returns
-                0.20 * calmar_ratio +           # Return vs drawdown
-                0.15 * profit_factor +          # Profit efficiency
-                0.15 * win_rate +               # Consistency
-                0.15 * geometric_mean_return +  # Compound growth
-                0.10 * (1 - max_drawdown)       # Drawdown penalty
+                0.25 * sharpe_normalized +           # Risk-adjusted returns
+                0.20 * calmar_normalized +           # Return vs drawdown
+                0.15 * profit_factor_normalized +    # Profit efficiency
+                0.15 * win_rate_normalized +         # Consistency
+                0.15 * gmr_normalized +              # Compound growth
+                0.10 * drawdown_score                # Drawdown penalty
             )
             
             return {
@@ -209,6 +240,431 @@ class MAOptimization3DVisualizer:
         
         self.results = results
         return results
+    
+    def calculate_neighborhood_aware_scores(self, metric: str = 'composite_score', 
+                                           neighborhood_radius: float = None,
+                                           own_score_weight: float = None,
+                                           neighborhood_weight: float = None,
+                                           negative_penalty_weight: float = None,
+                                           distance_weight_power: float = None) -> Dict:
+        """
+        Calculate neighborhood-aware composite scores for each point.
+        
+        This method assigns each point a score based on:
+        1. Its own score
+        2. The quality of its neighborhood (average of nearby high-scoring points, weighted by distance)
+        3. Penalty for negative scores nearby
+        4. Reward for being in a smooth, high-scoring region
+        
+        Args:
+            metric: Metric to use for scoring ('composite_score', 'sharpe_ratio', etc.)
+            neighborhood_radius: Maximum distance to consider for neighborhood (in normalized space, 0-1 range)
+                                 A radius of 0.2 means 20% of the parameter range in normalized space.
+                                 This adapts automatically to different parameter ranges.
+                                 Recommended values:
+                                 - 0.1-0.15: Very tight neighborhood (few neighbors, very local)
+                                 - 0.2-0.3: Moderate neighborhood (default: 0.2)
+                                 - 0.4-0.5: Large neighborhood (many neighbors, broader region)
+                                 
+                                 Example: If short_window ranges 16-34 (range=18) and radius=0.2,
+                                 it considers points within ~3.6 units in short_window direction.
+                                 This ensures both dimensions contribute equally regardless of their ranges.
+            own_score_weight: Weight for the point's own score (0-1)
+            neighborhood_weight: Weight for neighborhood average score (0-1)
+            negative_penalty_weight: Weight for penalty from negative scores nearby (0-1)
+            distance_weight_power: Power for distance weighting (higher = closer neighbors weighted much more)
+                                  Uses 1/distance^power. Default 2.0 means squared inverse distance.
+            
+        Returns:
+            Dictionary with neighborhood-aware scores and best parameters for each risk_reward_ratio
+        """
+        if not self.results:
+            print("❌ No results available. Run run_optimization_grid() first.")
+            return {}
+        
+        # Use config defaults if not specified
+        if neighborhood_radius is None:
+            neighborhood_radius = NEIGHBORHOOD_RADIUS
+        if own_score_weight is None:
+            own_score_weight = OWN_SCORE_WEIGHT
+        if neighborhood_weight is None:
+            neighborhood_weight = NEIGHBORHOOD_WEIGHT
+        if negative_penalty_weight is None:
+            negative_penalty_weight = NEGATIVE_PENALTY_WEIGHT
+        if distance_weight_power is None:
+            distance_weight_power = DISTANCE_WEIGHT_POWER
+        
+        neighborhood_scores = {}
+        
+        for rr, data in self.results.items():
+            x = np.array(data['short_windows'])
+            y = np.array(data['long_windows'])
+            z = np.array(data[metric])
+            
+            if len(x) < 2:
+                continue
+            
+            # Filter out invalid scores
+            valid_mask = z > -999
+            if not np.any(valid_mask):
+                continue
+            
+            x_valid = x[valid_mask]
+            y_valid = y[valid_mask]
+            z_valid = z[valid_mask]
+            
+            # Calculate neighborhood-aware scores
+            # We use NORMALIZED distance for neighbor selection to ensure both dimensions are treated equally
+            # A radius of 0.2 means 20% of the parameter range in normalized space (0-1)
+            # This adapts automatically to different parameter ranges
+            neighborhood_aware_scores = []
+            neighborhood_details = []
+            
+            # Normalize coordinates (scale each dimension to 0-1 range)
+            # This ensures both short_window and long_window contribute equally
+            x_range = x_valid.max() - x_valid.min()
+            y_range = y_valid.max() - y_valid.min()
+            x_norm = (x_valid - x_valid.min()) / (x_range + 1e-10)
+            y_norm = (y_valid - y_valid.min()) / (y_range + 1e-10)
+            
+            for i in range(len(x_valid)):
+                # Calculate Euclidean distances in NORMALIZED space (0-1 range)
+                # This creates a circle in normalized space, which adapts to parameter ranges
+                distances_norm = np.sqrt((x_norm - x_norm[i])**2 + (y_norm - y_norm[i])**2)
+                
+                # Also calculate original distances for reporting
+                distances_orig = np.sqrt((x_valid - x_valid[i])**2 + (y_valid - y_valid[i])**2)
+                
+                # Find neighbors within radius in NORMALIZED space
+                # neighborhood_radius is interpreted as a fraction of the parameter range (0-1)
+                # Default 0.2 means 20% of the range in each dimension
+                neighbor_mask = (distances_norm <= neighborhood_radius) & (distances_norm > 0)  # Exclude self
+                
+                if not np.any(neighbor_mask):
+                    # No neighbors, use own score only
+                    neighborhood_aware_scores.append(z_valid[i])
+                    neighborhood_details.append({
+                        'own_score': z_valid[i],
+                        'neighborhood_avg': z_valid[i],
+                        'neighborhood_std': 0.0,
+                        'negative_count': 0,
+                        'positive_count': 0,
+                        'neighbor_count': 0,
+                        'final_score': z_valid[i],
+                        'avg_neighbor_distance': 0.0
+                    })
+                    continue
+                
+                neighbor_scores = z_valid[neighbor_mask]
+                neighbor_distances = distances_norm[neighbor_mask]
+                
+                # Calculate distance-weighted average (closer neighbors have MUCH more weight)
+                # Use inverse distance weighting with power: weight = 1 / (distance^power)
+                # Higher power means closer points get exponentially more weight
+                # distance_weight_power=2.0 means squared inverse distance (strong preference for close neighbors)
+                # distance_weight_power=1.0 means linear inverse distance (moderate preference)
+                # distance_weight_power=3.0 means cubic inverse distance (very strong preference)
+                weights = 1.0 / (neighbor_distances ** distance_weight_power + 1e-10)
+                
+                # Normalize weights to sum to 1 for proper weighted average
+                weights_sum = np.sum(weights)
+                if weights_sum > 0:
+                    weights = weights / weights_sum
+                
+                weighted_avg = np.average(neighbor_scores, weights=weights)
+                
+                # Calculate neighborhood statistics
+                neighborhood_std = np.std(neighbor_scores)
+                negative_count = np.sum(neighbor_scores < 0)
+                positive_count = np.sum(neighbor_scores > 0)
+                neighbor_count = len(neighbor_scores)
+                
+                # Calculate components
+                own_score = z_valid[i]
+                
+                # Neighborhood bonus: reward high average scores nearby
+                # Normalize by the max score to keep it in reasonable range
+                max_score = np.max(z_valid) if len(z_valid) > 0 else 1.0
+                neighborhood_bonus = (weighted_avg / max_score) * neighborhood_weight if max_score > 0 else 0
+                
+                # Smoothness bonus: reward low standard deviation (smooth region)
+                # Lower std = smoother = better
+                smoothness_bonus = (1.0 / (1.0 + neighborhood_std)) * 0.1 if neighborhood_std > 0 else 0.1
+                
+                # Negative penalty: penalize if there are negative scores nearby
+                negative_penalty = (negative_count / neighbor_count) * negative_penalty_weight if neighbor_count > 0 else 0
+                
+                # Positive bonus: reward if surrounded by positive scores
+                positive_bonus = (positive_count / neighbor_count) * 0.05 if neighbor_count > 0 else 0
+                
+                # Calculate final neighborhood-aware score
+                # Normalize own score to 0-1 range for fair weighting
+                own_score_norm = (own_score / max_score) * own_score_weight if max_score > 0 else 0
+                
+                final_score = (
+                    own_score_norm +
+                    neighborhood_bonus +
+                    smoothness_bonus -
+                    negative_penalty +
+                    positive_bonus
+                )
+                
+                # Scale back to original score range for interpretability
+                # But keep the relative improvements from neighborhood
+                scaled_score = own_score + (final_score - own_score_norm) * max_score
+                
+                neighborhood_aware_scores.append(scaled_score)
+                neighborhood_details.append({
+                    'own_score': own_score,
+                    'neighborhood_avg': weighted_avg,
+                    'neighborhood_std': neighborhood_std,
+                    'negative_count': negative_count,
+                    'positive_count': positive_count,
+                    'neighbor_count': neighbor_count,
+                    'final_score': scaled_score,
+                    'avg_neighbor_distance': float(np.mean(neighbor_distances)) if len(neighbor_distances) > 0 else 0.0
+                })
+            
+            # Find best point based on neighborhood-aware score
+            best_idx = np.argmax(neighborhood_aware_scores)
+            
+            neighborhood_scores[rr] = {
+                'short_windows': x_valid.tolist(),
+                'long_windows': y_valid.tolist(),
+                'original_scores': z_valid.tolist(),
+                'neighborhood_aware_scores': neighborhood_aware_scores,
+                'neighborhood_details': neighborhood_details,
+                'best_idx': int(best_idx),
+                'best_short': int(x_valid[best_idx]),
+                'best_long': int(y_valid[best_idx]),
+                'best_original_score': float(z_valid[best_idx]),
+                'best_neighborhood_score': float(neighborhood_aware_scores[best_idx]),
+                'best_details': neighborhood_details[best_idx]
+            }
+        
+        return neighborhood_scores
+    
+    def find_optimal_parameters_neighborhood_aware(self, metric: str = 'composite_score',
+                                                  neighborhood_radius: float = None,
+                                                  own_score_weight: float = None,
+                                                  neighborhood_weight: float = None,
+                                                  negative_penalty_weight: float = None,
+                                                  distance_weight_power: float = None) -> Dict:
+        """
+        Find optimal parameters using neighborhood-aware scoring.
+        
+        This is the main method to call for automated parameter selection.
+        It finds the best parameters considering both individual scores and neighborhood quality.
+        
+        Args:
+            metric: Metric to use for scoring
+            neighborhood_radius: Maximum distance for neighborhood consideration
+            own_score_weight: Weight for point's own score
+            neighborhood_weight: Weight for neighborhood average
+            negative_penalty_weight: Weight for negative score penalty
+            distance_weight_power: Power for distance weighting (higher = closer neighbors weighted much more)
+            
+        Returns:
+            Dictionary with best parameters for each risk_reward_ratio and overall best
+        """
+        neighborhood_scores = self.calculate_neighborhood_aware_scores(
+            metric=metric,
+            neighborhood_radius=neighborhood_radius,
+            own_score_weight=own_score_weight,
+            neighborhood_weight=neighborhood_weight,
+            negative_penalty_weight=negative_penalty_weight,
+            distance_weight_power=distance_weight_power
+        )
+        
+        if not neighborhood_scores:
+            return {}
+        
+        # Find overall best across all risk_reward_ratios
+        overall_best = None
+        overall_best_score = -np.inf
+        
+        results_summary = {}
+        
+        for rr, scores_data in neighborhood_scores.items():
+            best_score = scores_data['best_neighborhood_score']
+            results_summary[rr] = {
+                'short_window': scores_data['best_short'],
+                'long_window': scores_data['best_long'],
+                'risk_reward_ratio': rr,
+                'original_score': scores_data['best_original_score'],
+                'neighborhood_aware_score': best_score,
+                'neighborhood_details': scores_data['best_details']
+            }
+            
+            if best_score > overall_best_score:
+                overall_best_score = best_score
+                overall_best = results_summary[rr]
+        
+        return {
+            'by_risk_reward_ratio': results_summary,
+            'overall_best': overall_best,
+            'all_scores': neighborhood_scores
+        }
+    
+    def print_neighborhood_aware_recommendations(self, metric: str = 'composite_score',
+                                                neighborhood_radius: float = None,
+                                                distance_weight_power: float = None) -> None:
+        """
+        Print recommendations based on neighborhood-aware scoring.
+        
+        Args:
+            metric: Metric to use for scoring
+            neighborhood_radius: Maximum distance for neighborhood consideration (uses config default if None)
+            distance_weight_power: Power for distance weighting (uses config default if None)
+        """
+        # Use config defaults if not specified
+        if neighborhood_radius is None:
+            neighborhood_radius = NEIGHBORHOOD_RADIUS
+        if distance_weight_power is None:
+            distance_weight_power = DISTANCE_WEIGHT_POWER
+            
+        recommendations = self.find_optimal_parameters_neighborhood_aware(
+            metric=metric,
+            neighborhood_radius=neighborhood_radius,
+            distance_weight_power=distance_weight_power
+        )
+        
+        if not recommendations:
+            print("❌ No recommendations available.")
+            return
+        
+        print("\n" + "="*80)
+        print("NEIGHBORHOOD-AWARE PARAMETER RECOMMENDATIONS")
+        print("="*80)
+        print(f"\n📊 Scoring Method: Neighborhood-Aware Composite Score")
+        print(f"   - Considers point's own score")
+        print(f"   - Rewards high-scoring neighborhoods (distance-weighted)")
+        print(f"   - Closer neighbors have MUCH more weight (1/distance^{distance_weight_power})")
+        print(f"   - Penalizes negative scores nearby")
+        print(f"   - Rewards smooth, consistent regions")
+        print(f"   - Neighborhood radius: {neighborhood_radius} (normalized, 0-1 range, {neighborhood_radius*100:.0f}% of parameter range)")
+        print(f"   - Distance weight power: {distance_weight_power} (higher = stronger preference for close neighbors)")
+        
+        print("\n" + "-"*80)
+        print("BEST PARAMETERS BY RISK-REWARD RATIO:")
+        print("-"*80)
+        
+        for rr, result in recommendations['by_risk_reward_ratio'].items():
+            details = result['neighborhood_details']
+            print(f"\n🎯 Risk-Reward Ratio: {rr}")
+            print(f"   Recommended Parameters:")
+            print(f"      Short Window: {result['short_window']}")
+            print(f"      Long Window: {result['long_window']}")
+            print(f"   Scores:")
+            print(f"      Original Score: {result['original_score']:.4f}")
+            print(f"      Neighborhood-Aware Score: {result['neighborhood_aware_score']:.4f}")
+            print(f"   Neighborhood Quality:")
+            print(f"      Neighbors: {details.get('neighbor_count', 0)}")
+            print(f"      Positive Neighbors: {details.get('positive_count', 0)}")
+            print(f"      Negative Neighbors: {details.get('negative_count', 0)}")
+            print(f"      Neighborhood Avg Score: {details.get('neighborhood_avg', details.get('own_score', 0)):.4f}")
+            print(f"      Neighborhood Std Dev: {details.get('neighborhood_std', 0.0):.4f} (lower = smoother)")
+            if 'avg_neighbor_distance' in details:
+                print(f"      Avg Neighbor Distance: {details['avg_neighbor_distance']:.4f}")
+        
+        if recommendations.get('overall_best'):
+            best = recommendations['overall_best']
+            print("\n" + "="*80)
+            print("🌟 OVERALL BEST PARAMETERS (Across All Risk-Reward Ratios):")
+            print("="*80)
+            print(f"   Short Window: {best['short_window']}")
+            print(f"   Long Window: {best['long_window']}")
+            print(f"   Risk-Reward Ratio: {best['risk_reward_ratio']}")
+            print(f"   Original Score: {best['original_score']:.4f}")
+            print(f"   Neighborhood-Aware Score: {best['neighborhood_aware_score']:.4f}")
+            print(f"   Neighborhood Quality: {best['neighborhood_details']}")
+            print("="*80)
+    
+    def print_top_neighborhood_aware_points(self, metric: str = 'composite_score',
+                                            top_n: int = 5,
+                                            neighborhood_radius: float = None,
+                                            distance_weight_power: float = None) -> None:
+        """
+        Print the top N points based on neighborhood-aware scores for each risk-reward ratio.
+        
+        Args:
+            metric: Metric to use for scoring
+            top_n: Number of top points to print (default: 5)
+            neighborhood_radius: Maximum distance for neighborhood consideration (uses config default if None)
+            distance_weight_power: Power for distance weighting (uses config default if None)
+        """
+        # Use config defaults if not specified
+        if neighborhood_radius is None:
+            neighborhood_radius = NEIGHBORHOOD_RADIUS
+        if distance_weight_power is None:
+            distance_weight_power = DISTANCE_WEIGHT_POWER
+            
+        neighborhood_scores = self.calculate_neighborhood_aware_scores(
+            metric=metric,
+            neighborhood_radius=neighborhood_radius,
+            distance_weight_power=distance_weight_power
+        )
+        
+        if not neighborhood_scores:
+            print("❌ No neighborhood-aware scores available.")
+            return
+        
+        print("\n" + "="*80)
+        print(f"TOP {top_n} NEIGHBORHOOD-AWARE POINTS BY RISK-REWARD RATIO")
+        print("="*80)
+        
+        for rr, scores_data in neighborhood_scores.items():
+            # Get all points with their scores
+            short_windows = scores_data['short_windows']
+            long_windows = scores_data['long_windows']
+            original_scores = scores_data['original_scores']
+            neighborhood_scores_list = scores_data['neighborhood_aware_scores']
+            details_list = scores_data['neighborhood_details']
+            
+            # Create list of tuples: (neighborhood_score, original_score, short, long, details, index)
+            points = list(zip(
+                neighborhood_scores_list,
+                original_scores,
+                short_windows,
+                long_windows,
+                details_list,
+                range(len(short_windows))
+            ))
+            
+            # Sort by neighborhood-aware score (descending)
+            points.sort(key=lambda x: x[0], reverse=True)
+            
+            # Print top N
+            print(f"\n🎯 Risk-Reward Ratio: {rr}")
+            print("-" * 80)
+            print(f"{'Rank':<6} {'Short':<8} {'Long':<8} {'Orig Score':<12} {'NA Score':<12} {'Neighbors':<12} {'Pos/Neg':<12}")
+            print("-" * 80)
+            
+            for rank, (na_score, orig_score, short, long, details, idx) in enumerate(points[:top_n], 1):
+                pos_count = details.get('positive_count', 0)
+                neg_count = details.get('negative_count', 0)
+                neighbor_count = details.get('neighbor_count', 0)
+                pos_neg_str = f"{pos_count}/{neg_count}" if neighbor_count > 0 else "N/A"
+                
+                print(f"{rank:<6} {short:<8} {long:<8} {orig_score:<12.4f} {na_score:<12.4f} {neighbor_count:<12} {pos_neg_str:<12}")
+            
+            # Show additional details for top point
+            if points:
+                top_point = points[0]
+                top_details = top_point[4]
+                print(f"\n   📊 Top Point Details:")
+                print(f"      Short Window: {top_point[2]}, Long Window: {top_point[3]}")
+                print(f"      Original Score: {top_point[1]:.4f}")
+                print(f"      Neighborhood-Aware Score: {top_point[0]:.4f}")
+                print(f"      Neighborhood Avg Score: {top_details.get('neighborhood_avg', 0):.4f}")
+                print(f"      Neighborhood Std Dev: {top_details.get('neighborhood_std', 0):.4f}")
+                print(f"      Neighbors: {top_details.get('neighbor_count', 0)}")
+                print(f"      Positive Neighbors: {top_details.get('positive_count', 0)}")
+                print(f"      Negative Neighbors: {top_details.get('negative_count', 0)}")
+                if 'avg_neighbor_distance' in top_details:
+                    print(f"      Avg Neighbor Distance: {top_details['avg_neighbor_distance']:.4f}")
+        
+        print("\n" + "="*80)
     
     def create_3d_plots(self, metric: str = 'composite_score') -> None:
         """
@@ -1071,7 +1527,7 @@ class MAOptimization3DVisualizer:
                 )
                 fig.add_trace(ellipse, row=row, col=col)
             
-            # Highlight best point
+            # Highlight best point (original scoring)
             best_idx = np.argmax(z)
             best_scatter = go.Scatter(
                 x=[x[best_idx]], y=[y[best_idx]],
@@ -1082,12 +1538,58 @@ class MAOptimization3DVisualizer:
                     symbol='diamond',
                     opacity=1.0
                 ),
-                text=[f"BEST: Short={x[best_idx]}, Long={y[best_idx]}, Score={z[best_idx]:.3f}"],
+                text=[f"BEST (Original): Short={x[best_idx]}, Long={y[best_idx]}, Score={z[best_idx]:.3f}"],
                 hovertemplate='%{text}<extra></extra>',
-                name=f'Best Point',
+                name=f'Best Point (Original)',
                 showlegend=False
             )
             fig.add_trace(best_scatter, row=row, col=col)
+            
+            # Highlight neighborhood-aware best point
+            try:
+                neighborhood_scores = self.calculate_neighborhood_aware_scores(metric=metric)
+                if rr in neighborhood_scores:
+                    na_data = neighborhood_scores[rr]
+                    na_best_short = na_data['best_short']
+                    na_best_long = na_data['best_long']
+                    na_best_score = na_data['best_neighborhood_score']
+                    na_original_score = na_data['best_original_score']
+                    na_details = na_data['best_details']
+                    
+                    # Check if this point exists in the current plot data
+                    point_exists = False
+                    for j in range(len(x)):
+                        if x[j] == na_best_short and y[j] == na_best_long:
+                            point_exists = True
+                            break
+                    
+                    if point_exists:
+                        na_best_scatter = go.Scatter(
+                            x=[na_best_short], y=[na_best_long],
+                            mode='markers',
+                            marker=dict(
+                                size=18,
+                                color='gold',
+                                symbol='star',
+                                opacity=1.0,
+                                line=dict(width=2, color='black')
+                            ),
+                            text=[f"🌟 NEIGHBORHOOD-AWARE BEST: Short={na_best_short}, Long={na_best_long}<br>"
+                                  f"Original Score: {na_original_score:.3f}<br>"
+                                  f"Neighborhood Score: {na_best_score:.3f}<br>"
+                                  f"Neighbors: {na_details['neighbor_count']}<br>"
+                                  f"Positive Neighbors: {na_details['positive_count']}<br>"
+                                  f"Negative Neighbors: {na_details['negative_count']}<br>"
+                                  f"Neighborhood Avg: {na_details['neighborhood_avg']:.3f}<br>"
+                                  f"Neighborhood Std: {na_details['neighborhood_std']:.3f}"],
+                            hovertemplate='%{text}<extra></extra>',
+                            name=f'🌟 Neighborhood-Aware Best',
+                            showlegend=False
+                        )
+                        fig.add_trace(na_best_scatter, row=row, col=col)
+            except Exception as e:
+                # Silently fail if neighborhood scoring not available
+                pass
         
         # Update layout
         fig.update_layout(

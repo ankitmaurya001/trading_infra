@@ -188,7 +188,7 @@ class TradingEngine:
         # Risk checks
         expected_notional = position_size
         ok, reason = self._check_risk_and_update(expected_notional, timestamp)
-        if False:
+        if not ok:
             print(f"⛔ Trade rejected by risk controls: {reason}")
             rejection = {
                 'id': len(self.trade_history) + 1,

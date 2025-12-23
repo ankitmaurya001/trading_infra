@@ -8,13 +8,15 @@ import numpy as np
 from datetime import datetime, timedelta
 import os
 import sys
+import json
 
 # Add current directory to path for imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from ma_3d_optimization_visualizer import MAOptimization3DVisualizer
 
-SYMBOL = "NATURALGAS25DECFUT"  # Default Indian stock symbol
+#SYMBOL = "GOLD25DECFUT"  # Default Indian stock symbol
+SYMBOL = "SILVERMIC26FEBFUT"  # Default Indian stock symbol
 EXCHANGE = "MCX"  # Default exchange (NSE, BSE, MCX, etc.)
 
 def map_interval_to_kite(interval: str) -> str:
@@ -33,14 +35,15 @@ def map_interval_to_kite(interval: str) -> str:
         '5m': '5minute',
         '15m': '15minute',
         '30m': '30minute',
-        '1h': 'hour',
+        '1h': '60minute',
         '2h': '2hour',
         '4h': '4hour',
         '1d': 'day',
         '1w': 'week',
         '1M': 'month'
     }
-    return interval_mapping.get(interval, '15minute')
+    result = interval_mapping.get(interval, '15minute')
+    return result
 
 def fetch_real_data(symbol="TATAMOTORS", days=30, interval="15m", exchange="NSE"):
     """Fetch real data from Zerodha Kite"""
@@ -51,11 +54,10 @@ def fetch_real_data(symbol="TATAMOTORS", days=30, interval="15m", exchange="NSE"
         import config as cfg
         
         # Calculate date range (Kite uses YYYY-MM-DD format)
-        # end_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')  # Yesterday
-        # start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-
-        end_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-        start_date = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d')
+        # Kite API's to_date needs to be tomorrow to get today's data (based on notebook example)
+        # Use days parameter: end_date is tomorrow (to get data up to today), start_date is days ago
+        end_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')  # Tomorrow (Kite API needs this to get today's data)
+        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')  # days ago (30 days ago for days=30)
         
         print(f"   From: {start_date}")
         print(f"   To: {end_date}")
@@ -113,7 +115,9 @@ def generate_sample_data():
     market_dates = []
     for date in dates:
         if date.weekday() < 5:  # Monday to Friday
-            if '09:15' <= date.strftime('%H:%M') <= '15:30':
+            # Use time comparison instead of string comparison for robustness
+            time_str = date.strftime('%H:%M')
+            if '09:15' <= time_str <= '15:30':
                 market_dates.append(date)
     
     # Generate sample OHLCV data
@@ -187,13 +191,20 @@ def main():
     # Define parameter ranges
     # short_window_range = [5, 10, 15, 20, 25, 30]
     # long_window_range = [20, 30, 40, 50, 60, 70]
-    SHORT_VAL =30
-    LONG_VAL = 60
-    RANGE = 9
-    short_window_range = np.arange(max(SHORT_VAL - RANGE, 5), SHORT_VAL + RANGE, 1)
-    long_window_range = np.arange(LONG_VAL - RANGE, LONG_VAL + RANGE, 1)
-    risk_reward_ratios = [2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0]
+    SHORT_VAL = 25
+    LONG_VAL = 40
+    # FIX: Increased range from 1 to 5 to allow meaningful optimization
+    RANGE = 5
+    # Ensure short_window_range max is less than long_window_range min to avoid invalid combinations
+    short_start = max(SHORT_VAL - RANGE, 4)
+    short_end = SHORT_VAL + RANGE
+    long_start = max(LONG_VAL - RANGE, SHORT_VAL + RANGE + 1)
+    long_end = LONG_VAL + RANGE
+    short_window_range = np.arange(short_start, short_end, 1)
+    long_window_range = np.arange(long_start, long_end, 1)
     
+    risk_reward_ratios = [4.0, 4.5, 5.0, 5.5, 6.0]
+    # risk_reward_ratios = [4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0]
     print(f"\n🔍 Running optimization...")
     print(f"   Short windows: {short_window_range}")
     print(f"   Long windows: {long_window_range}")
@@ -228,6 +239,15 @@ def main():
     
     print("   📊 Creating optimal regions...")
     visualizer.create_optimal_regions_plot(metric='composite_score', percentile_threshold=80.0)
+    
+    # Print neighborhood-aware recommendations
+    # Uses constants from config.py (NEIGHBORHOOD_RADIUS, DISTANCE_WEIGHT_POWER, etc.)
+    print("\n   🤖 Calculating neighborhood-aware recommendations...")
+    visualizer.print_neighborhood_aware_recommendations(metric='composite_score')
+    
+    # Print top N neighborhood-aware points
+    print("\n   📊 Printing top neighborhood-aware points...")
+    visualizer.print_top_neighborhood_aware_points(metric='composite_score', top_n=5)
     
     print("   📊 Creating 3D Gaussian surfaces...")
     visualizer.create_3d_gaussian_surface_plots(metric='composite_score')
