@@ -56,9 +56,13 @@ def fetch_real_data(symbol="TATAMOTORS", days=30, interval="15m", exchange="NSE"
         # Calculate date range (Kite uses YYYY-MM-DD format)
         # Kite API's to_date needs to be tomorrow to get today's data (based on notebook example)
         # Use days parameter: end_date is tomorrow (to get data up to today), start_date is days ago
-        end_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')  # Tomorrow (Kite API needs this to get today's data)
-        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')  # days ago (30 days ago for days=30)
+        # end_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')  # Tomorrow (Kite API needs this to get today's data)
+        # start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')  # days ago (30 days ago for days=30)
         
+        end_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')  # Tomorrow (Kite API needs this to get today's data)
+        start_date = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d')  # days ago (30 days ago for days=30)
+        
+
         print(f"   From: {start_date}")
         print(f"   To: {end_date}")
         print(f"   Interval: {interval} (Kite: {map_interval_to_kite(interval)})")
@@ -191,10 +195,9 @@ def main():
     # Define parameter ranges
     # short_window_range = [5, 10, 15, 20, 25, 30]
     # long_window_range = [20, 30, 40, 50, 60, 70]
-    SHORT_VAL = 25
-    LONG_VAL = 40
-    # FIX: Increased range from 1 to 5 to allow meaningful optimization
-    RANGE = 5
+    SHORT_VAL = 5
+    LONG_VAL = 60
+    RANGE = 9
     # Ensure short_window_range max is less than long_window_range min to avoid invalid combinations
     short_start = max(SHORT_VAL - RANGE, 4)
     short_end = SHORT_VAL + RANGE
@@ -245,9 +248,13 @@ def main():
     print("\n   🤖 Calculating neighborhood-aware recommendations...")
     visualizer.print_neighborhood_aware_recommendations(metric='composite_score')
     
-    # Print top N neighborhood-aware points
+    # Print top N neighborhood-aware points (per RR ratio)
     print("\n   📊 Printing top neighborhood-aware points...")
     visualizer.print_top_neighborhood_aware_points(metric='composite_score', top_n=5)
+    
+    # Print OVERALL top N across all RR ratios
+    print("\n   🏆 Calculating overall top parameters across all RR ratios...")
+    visualizer.print_overall_top_neighborhood_aware_points(metric='composite_score', top_n=5)
     
     print("   📊 Creating 3D Gaussian surfaces...")
     visualizer.create_3d_gaussian_surface_plots(metric='composite_score')

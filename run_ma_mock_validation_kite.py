@@ -47,6 +47,10 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
 from kite_comprehensive_strategy_validation import KiteComprehensiveStrategyValidator
 from trading_engine import TradingEngine
 import config as cfg
@@ -56,7 +60,7 @@ import config as cfg
 # GLOBAL CONFIGURATION - Edit these values to set defaults
 # ============================================================================
 # You can override these via command-line arguments if needed
-DEFAULT_SYMBOL = "CRUDEOILM25DECFUT"  # Default Indian stock symbol
+DEFAULT_SYMBOL = "SILVERMIC26FEBFUT"  # Default Indian stock symbol
 DEFAULT_EXCHANGE = "MCX"  # Default exchange (NSE, BSE, MCX)
 # use 30 days ago (Kite uses YYYY-MM-DD format)
 DEFAULT_START_DATE = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
@@ -64,7 +68,7 @@ DEFAULT_START_DATE = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 DEFAULT_END_DATE = datetime.now().strftime("%Y-%m-%d")
 DEFAULT_INTERVAL = "15m"  # Will be converted to "15minute" for Kite
 DEFAULT_PARAMS = [
-    {"short_window": 26, "long_window": 41, "risk_reward_ratio": 6.0}
+    {"short_window": 4, "long_window": 58, "risk_reward_ratio": 6.0}
 ]
 # ============================================================================
 
@@ -118,6 +122,293 @@ def convert_date_format(date_str: str) -> str:
         except ValueError:
             # If neither works, return as-is (will fail later with better error)
             return date_str
+
+
+def create_cumulative_pnl_chart(
+    trade_history: pd.DataFrame,
+    params: Dict,
+    symbol: str,
+    initial_balance: float,
+    output_path: str
+) -> str:
+    """
+    Create a cumulative PnL chart based on closed trades.
+    
+    Shows how realized PnL accumulates over time after each trade closes.
+    
+    Args:
+        trade_history: DataFrame with trade records
+        params: Parameter dict for the strategy
+        symbol: Trading symbol
+        initial_balance: Starting balance
+        output_path: Path to save the HTML chart
+        
+    Returns:
+        Path to saved chart
+    """
+    if trade_history.empty:
+        print("⚠️  No trade history to plot")
+        return None
+    
+    # Filter closed trades only
+    closed_statuses = ['closed', 'tp_hit', 'sl_hit', 'reversed']
+    closed_trades = trade_history[trade_history['status'].isin(closed_statuses)].copy()
+    
+    if closed_trades.empty:
+        print("⚠️  No closed trades to plot")
+        return None
+    
+    # Sort by exit time
+    if 'exit_time' not in closed_trades.columns:
+        print("⚠️  No exit_time in trade history")
+        return None
+    
+    closed_trades = closed_trades.sort_values('exit_time').reset_index(drop=True)
+    
+    # Calculate cumulative PnL
+    # Each trade's pnl is already a percentage return
+    cumulative_pnl = []
+    cumulative_balance = []
+    running_balance = initial_balance
+    
+    for idx, trade in closed_trades.iterrows():
+        # Get the PnL percentage for this trade
+        trade_pnl_pct = trade['pnl']  # This is already a decimal (e.g., 0.05 for 5%)
+        
+        # Calculate dollar profit/loss based on position size at entry
+        # The margin used determines how much of balance was at risk
+        leverage = trade.get('leverage', 1.0)
+        position_size = trade.get('position_size', trade.get('quantity', 0) * trade.get('entry_price', 0))
+        
+        if position_size > 0 and leverage > 0:
+            margin_used = position_size / leverage
+            trade_profit = margin_used * trade_pnl_pct
+        else:
+            # Fallback: use running balance with pnl percentage
+            trade_profit = running_balance * trade_pnl_pct
+        
+        running_balance += trade_profit
+        cumulative_balance.append(running_balance)
+        cumulative_pnl.append((running_balance - initial_balance) / initial_balance * 100)
+    
+    # Create the chart
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.12,
+        row_heights=[0.65, 0.35],
+        subplot_titles=('📈 Cumulative PnL (%)', '📊 Per-Trade PnL (%)')
+    )
+    
+    exit_times = closed_trades['exit_time'].tolist()
+    trade_pnls = (closed_trades['pnl'] * 100).tolist()  # Convert to percentage
+    
+    # Add starting point (0% at first trade entry or start)
+    first_entry = closed_trades['entry_time'].iloc[0] if 'entry_time' in closed_trades.columns else exit_times[0]
+    
+    # 1. Cumulative PnL line
+    plot_times = [first_entry] + exit_times
+    plot_pnls = [0] + cumulative_pnl
+    
+    # Color based on positive/negative
+    colors_line = ['green' if p >= 0 else 'red' for p in plot_pnls]
+    
+    fig.add_trace(
+        go.Scatter(
+            x=plot_times,
+            y=plot_pnls,
+            mode='lines+markers',
+            name='Cumulative PnL',
+            line=dict(color='#2E86AB', width=3),
+            marker=dict(size=8, color=colors_line, line=dict(width=1, color='white')),
+            hovertemplate='<b>Time:</b> %{x}<br><b>Cumulative PnL:</b> %{y:.2f}%<extra></extra>',
+            fill='tozeroy',
+            fillcolor='rgba(46, 134, 171, 0.2)'
+        ),
+        row=1, col=1
+    )
+    
+    # Add zero reference line
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1, row=1, col=1)
+    
+    # 2. Per-trade PnL bar chart
+    bar_colors = ['green' if p >= 0 else 'red' for p in trade_pnls]
+    
+    fig.add_trace(
+        go.Bar(
+            x=exit_times,
+            y=trade_pnls,
+            name='Trade PnL',
+            marker_color=bar_colors,
+            hovertemplate='<b>Exit:</b> %{x}<br><b>PnL:</b> %{y:.2f}%<extra></extra>',
+            opacity=0.7
+        ),
+        row=2, col=1
+    )
+    
+    # Add zero line for bar chart
+    fig.add_hline(y=0, line_dash="solid", line_color="gray", line_width=1, row=2, col=1)
+    
+    # Calculate summary stats
+    final_pnl = cumulative_pnl[-1] if cumulative_pnl else 0
+    final_balance = cumulative_balance[-1] if cumulative_balance else initial_balance
+    total_trades = len(closed_trades)
+    winning_trades = len(closed_trades[closed_trades['pnl'] > 0])
+    losing_trades = len(closed_trades[closed_trades['pnl'] < 0])
+    win_rate = winning_trades / total_trades * 100 if total_trades > 0 else 0
+    
+    # Calculate max drawdown from cumulative PnL
+    peak = 0
+    max_dd = 0
+    for pnl in cumulative_pnl:
+        if pnl > peak:
+            peak = pnl
+        dd = peak - pnl
+        if dd > max_dd:
+            max_dd = dd
+    
+    # Format params for title
+    params_str = f"Short={params.get('short_window')}, Long={params.get('long_window')}, RR={params.get('risk_reward_ratio')}"
+    
+    # Update layout
+    fig.update_layout(
+        title=dict(
+            text=f"📈 {symbol} MA Strategy - Cumulative PnL<br>"
+                 f"<sup>{params_str} | Final PnL: {final_pnl:+.2f}% | "
+                 f"Trades: {total_trades} (W:{winning_trades}/L:{losing_trades}) | "
+                 f"Win Rate: {win_rate:.1f}% | Max DD: {max_dd:.2f}%</sup>",
+            font=dict(size=16)
+        ),
+        xaxis2_title="Time",
+        yaxis_title="Cumulative PnL (%)",
+        yaxis2_title="Trade PnL (%)",
+        height=700,
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        hovermode='x unified'
+    )
+    
+    # Save chart
+    fig.write_html(output_path)
+    print(f"📊 Cumulative PnL chart saved: {output_path}")
+    
+    return output_path
+
+
+def create_combined_pnl_chart(
+    all_results: List[Dict],
+    symbol: str,
+    initial_balance: float,
+    output_path: str
+) -> str:
+    """
+    Create a combined cumulative PnL chart comparing all parameter sets.
+    
+    Args:
+        all_results: List of results with trade_history for each param set
+        symbol: Trading symbol
+        initial_balance: Starting balance
+        output_path: Path to save the HTML chart
+        
+    Returns:
+        Path to saved chart
+    """
+    if not all_results:
+        print("⚠️  No results to plot")
+        return None
+    
+    fig = go.Figure()
+    
+    colors = ['#2E86AB', '#E74C3C', '#27AE60', '#9B59B6', '#F39C12', '#1ABC9C', '#E91E63', '#3F51B5']
+    
+    for idx, result in enumerate(all_results):
+        trade_history = result.get('trade_history')
+        if trade_history is None or trade_history.empty:
+            continue
+        
+        # Filter closed trades
+        closed_statuses = ['closed', 'tp_hit', 'sl_hit', 'reversed']
+        closed_trades = trade_history[trade_history['status'].isin(closed_statuses)].copy()
+        
+        if closed_trades.empty or 'exit_time' not in closed_trades.columns:
+            continue
+        
+        closed_trades = closed_trades.sort_values('exit_time').reset_index(drop=True)
+        
+        # Calculate cumulative PnL
+        cumulative_pnl = []
+        running_balance = initial_balance
+        
+        for _, trade in closed_trades.iterrows():
+            trade_pnl_pct = trade['pnl']
+            leverage = trade.get('leverage', 1.0)
+            position_size = trade.get('position_size', trade.get('quantity', 0) * trade.get('entry_price', 0))
+            
+            if position_size > 0 and leverage > 0:
+                margin_used = position_size / leverage
+                trade_profit = margin_used * trade_pnl_pct
+            else:
+                trade_profit = running_balance * trade_pnl_pct
+            
+            running_balance += trade_profit
+            cumulative_pnl.append((running_balance - initial_balance) / initial_balance * 100)
+        
+        params = result['parameters']
+        params_label = f"S={params.get('short_window')}, L={params.get('long_window')}, RR={params.get('risk_reward_ratio')}"
+        
+        exit_times = closed_trades['exit_time'].tolist()
+        first_entry = closed_trades['entry_time'].iloc[0] if 'entry_time' in closed_trades.columns else exit_times[0]
+        
+        plot_times = [first_entry] + exit_times
+        plot_pnls = [0] + cumulative_pnl
+        
+        color = colors[idx % len(colors)]
+        final_pnl = cumulative_pnl[-1] if cumulative_pnl else 0
+        
+        fig.add_trace(
+            go.Scatter(
+                x=plot_times,
+                y=plot_pnls,
+                mode='lines+markers',
+                name=f"{params_label} ({final_pnl:+.1f}%)",
+                line=dict(color=color, width=2),
+                marker=dict(size=6),
+                hovertemplate=f'<b>{params_label}</b><br>Time: %{{x}}<br>PnL: %{{y:.2f}}%<extra></extra>'
+            )
+        )
+    
+    # Add zero line
+    fig.add_hline(y=0, line_dash="dash", line_color="gray")
+    
+    fig.update_layout(
+        title=dict(
+            text=f"📊 {symbol} - Parameter Comparison (Cumulative PnL %)",
+            font=dict(size=16)
+        ),
+        xaxis_title="Time",
+        yaxis_title="Cumulative PnL (%)",
+        height=500,
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        hovermode='x unified'
+    )
+    
+    fig.write_html(output_path)
+    print(f"📊 Combined PnL chart saved: {output_path}")
+    
+    return output_path
 
 
 def _load_params_list(params_str: str, params_file: str, default_params: List[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
@@ -269,13 +560,16 @@ def run_ma_mock(
 
         print("🚦 Running simulation...")
         start_t = datetime.now()
+        
         for j in range(len(validator.test_data)):
             current_data = validator.test_data.iloc[: j + 1]
             current_time = validator.test_data.index[j]
             engine.process_strategy_signals(strategy, current_data, current_time)
+            
             if mock_trading_delay > 0:
                 import time
                 time.sleep(mock_trading_delay)
+        
         duration_s = (datetime.now() - start_t).total_seconds()
 
         final_status = engine.get_current_status()
@@ -344,6 +638,55 @@ def run_ma_mock(
                 default=str,
             )
         print(f"💾 Saved results to {out_json}")
+        
+        # Generate PnL charts
+        print("\n📊 Generating Cumulative PnL charts...")
+        chart_paths = []
+        
+        for r in results:
+            if r.get('trade_history') is not None and not r['trade_history'].empty:
+                chart_filename = f"{r['session_id']}_cumulative_pnl.html"
+                chart_path = os.path.join(output_dir, chart_filename)
+                
+                try:
+                    result_path = create_cumulative_pnl_chart(
+                        trade_history=r['trade_history'],
+                        params=r['parameters'],
+                        symbol=symbol,
+                        initial_balance=initial_balance,
+                        output_path=chart_path
+                    )
+                    if result_path:
+                        chart_paths.append(chart_path)
+                except Exception as e:
+                    print(f"⚠️  Failed to create chart for param set {r['parameter_set']}: {e}")
+        
+        # Create combined comparison chart if multiple param sets
+        if len(results) > 1:
+            combined_chart_path = os.path.join(
+                output_dir, 
+                f"ma_mock_combined_pnl_{symbol}_{exchange}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+            )
+            try:
+                create_combined_pnl_chart(
+                    all_results=results,
+                    symbol=symbol,
+                    initial_balance=initial_balance,
+                    output_path=combined_chart_path
+                )
+                chart_paths.append(combined_chart_path)
+            except Exception as e:
+                print(f"⚠️  Failed to create combined chart: {e}")
+        
+        # Open the first chart in browser
+        if chart_paths:
+            print(f"\n🌐 Opening PnL chart in browser...")
+            try:
+                import webbrowser
+                webbrowser.open(f"file://{os.path.abspath(chart_paths[0])}")
+            except Exception as e:
+                print(f"⚠️  Could not open browser: {e}")
+                print(f"   Please manually open: {os.path.abspath(chart_paths[0])}")
 
     # Report failed parameter sets
     if failed_results:

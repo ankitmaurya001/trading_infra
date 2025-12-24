@@ -32,10 +32,96 @@ import config as cfg
 
 # Import neighborhood-aware scoring constants
 NEIGHBORHOOD_RADIUS = cfg.NEIGHBORHOOD_RADIUS
+NEIGHBORHOOD_RADIUS_MULTIPLIER = getattr(cfg, 'NEIGHBORHOOD_RADIUS_MULTIPLIER', 1.5)
 DISTANCE_WEIGHT_POWER = cfg.DISTANCE_WEIGHT_POWER
 OWN_SCORE_WEIGHT = cfg.OWN_SCORE_WEIGHT
 NEIGHBORHOOD_WEIGHT = cfg.NEIGHBORHOOD_WEIGHT
 NEGATIVE_PENALTY_WEIGHT = cfg.NEGATIVE_PENALTY_WEIGHT
+
+
+def calculate_dynamic_neighborhood_radius(x_values: np.ndarray, y_values: np.ndarray, 
+                                          multiplier: float = None) -> Tuple[float, dict]:
+    """
+    Dynamically calculate the neighborhood radius based on grid step sizes.
+    
+    This ensures the radius is always appropriate for the given parameter grid,
+    automatically adapting to include immediate neighbors regardless of grid spacing.
+    
+    Args:
+        x_values: Array of x coordinates (e.g., short_window values)
+        y_values: Array of y coordinates (e.g., long_window values)
+        multiplier: How many "steps" to include (default from config)
+                   1.5 = immediate diagonal neighbors
+                   2.0 = next layer of neighbors
+    
+    Returns:
+        Tuple of (calculated_radius, details_dict)
+    """
+    if multiplier is None:
+        multiplier = NEIGHBORHOOD_RADIUS_MULTIPLIER
+    
+    # Get unique sorted values
+    x_unique = np.sort(np.unique(x_values))
+    y_unique = np.sort(np.unique(y_values))
+    
+    # Calculate ranges
+    x_range = x_unique.max() - x_unique.min() if len(x_unique) > 1 else 1.0
+    y_range = y_unique.max() - y_unique.min() if len(y_unique) > 1 else 1.0
+    
+    # Calculate minimum step sizes (smallest gap between adjacent grid points)
+    if len(x_unique) > 1:
+        x_steps = np.diff(x_unique)
+        x_min_step = np.min(x_steps)
+        x_avg_step = np.mean(x_steps)
+    else:
+        x_min_step = x_range
+        x_avg_step = x_range
+    
+    if len(y_unique) > 1:
+        y_steps = np.diff(y_unique)
+        y_min_step = np.min(y_steps)
+        y_avg_step = np.mean(y_steps)
+    else:
+        y_min_step = y_range
+        y_avg_step = y_range
+    
+    # Normalize step sizes to 0-1 range
+    x_step_norm = x_min_step / (x_range + 1e-10)
+    y_step_norm = y_min_step / (y_range + 1e-10)
+    
+    # Calculate diagonal distance to nearest neighbor in normalized space
+    # This is the Euclidean distance to a diagonal neighbor
+    min_diagonal_dist = np.sqrt(x_step_norm**2 + y_step_norm**2)
+    
+    # Also calculate orthogonal distance (horizontal/vertical neighbor)
+    min_orthogonal_dist = min(x_step_norm, y_step_norm)
+    
+    # Set radius to include neighbors based on multiplier
+    # multiplier=1.0 would just barely include orthogonal neighbors
+    # multiplier=1.5 ensures we capture all 8 immediate neighbors (including diagonal)
+    # multiplier=2.0 captures the next ring of neighbors
+    dynamic_radius = min_diagonal_dist * multiplier
+    
+    # Ensure radius is reasonable (not too small or too large)
+    dynamic_radius = max(dynamic_radius, 0.05)  # At least 5% of range
+    dynamic_radius = min(dynamic_radius, 0.5)   # At most 50% of range
+    
+    details = {
+        'x_range': x_range,
+        'y_range': y_range,
+        'x_min_step': x_min_step,
+        'y_min_step': y_min_step,
+        'x_step_normalized': x_step_norm,
+        'y_step_normalized': y_step_norm,
+        'min_orthogonal_dist': min_orthogonal_dist,
+        'min_diagonal_dist': min_diagonal_dist,
+        'multiplier': multiplier,
+        'calculated_radius': dynamic_radius,
+        'x_unique_count': len(x_unique),
+        'y_unique_count': len(y_unique),
+    }
+    
+    return dynamic_radius, details
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -294,6 +380,10 @@ class MAOptimization3DVisualizer:
         if distance_weight_power is None:
             distance_weight_power = DISTANCE_WEIGHT_POWER
         
+        # Track if we're using auto radius
+        use_auto_radius = (neighborhood_radius == "auto" or 
+                          (isinstance(neighborhood_radius, str) and neighborhood_radius.lower() == "auto"))
+        
         neighborhood_scores = {}
         
         for rr, data in self.results.items():
@@ -315,8 +405,6 @@ class MAOptimization3DVisualizer:
             
             # Calculate neighborhood-aware scores
             # We use NORMALIZED distance for neighbor selection to ensure both dimensions are treated equally
-            # A radius of 0.2 means 20% of the parameter range in normalized space (0-1)
-            # This adapts automatically to different parameter ranges
             neighborhood_aware_scores = []
             neighborhood_details = []
             
@@ -327,6 +415,20 @@ class MAOptimization3DVisualizer:
             x_norm = (x_valid - x_valid.min()) / (x_range + 1e-10)
             y_norm = (y_valid - y_valid.min()) / (y_range + 1e-10)
             
+            # Calculate dynamic radius if auto mode is enabled
+            if use_auto_radius:
+                actual_radius, radius_details = calculate_dynamic_neighborhood_radius(x_valid, y_valid)
+                if rr == list(self.results.keys())[0]:  # Print only once
+                    print(f"\n📐 AUTO NEIGHBORHOOD RADIUS CALCULATION:")
+                    print(f"   Grid: {radius_details['x_unique_count']} x {radius_details['y_unique_count']} points")
+                    print(f"   X step (normalized): {radius_details['x_step_normalized']:.4f}")
+                    print(f"   Y step (normalized): {radius_details['y_step_normalized']:.4f}")
+                    print(f"   Min diagonal distance: {radius_details['min_diagonal_dist']:.4f}")
+                    print(f"   Multiplier: {radius_details['multiplier']}")
+                    print(f"   → Calculated radius: {actual_radius:.4f}")
+            else:
+                actual_radius = neighborhood_radius
+            
             for i in range(len(x_valid)):
                 # Calculate Euclidean distances in NORMALIZED space (0-1 range)
                 # This creates a circle in normalized space, which adapts to parameter ranges
@@ -336,9 +438,8 @@ class MAOptimization3DVisualizer:
                 distances_orig = np.sqrt((x_valid - x_valid[i])**2 + (y_valid - y_valid[i])**2)
                 
                 # Find neighbors within radius in NORMALIZED space
-                # neighborhood_radius is interpreted as a fraction of the parameter range (0-1)
-                # Default 0.2 means 20% of the range in each dimension
-                neighbor_mask = (distances_norm <= neighborhood_radius) & (distances_norm > 0)  # Exclude self
+                # actual_radius is either auto-calculated or from config (fraction of parameter range, 0-1)
+                neighbor_mask = (distances_norm <= actual_radius) & (distances_norm > 0)  # Exclude self
                 
                 if not np.any(neighbor_mask):
                     # No neighbors, use own score only
@@ -542,7 +643,11 @@ class MAOptimization3DVisualizer:
         print(f"   - Closer neighbors have MUCH more weight (1/distance^{distance_weight_power})")
         print(f"   - Penalizes negative scores nearby")
         print(f"   - Rewards smooth, consistent regions")
-        print(f"   - Neighborhood radius: {neighborhood_radius} (normalized, 0-1 range, {neighborhood_radius*100:.0f}% of parameter range)")
+        if neighborhood_radius == "auto" or (isinstance(neighborhood_radius, str) and neighborhood_radius.lower() == "auto"):
+            print(f"   - Neighborhood radius: AUTO (dynamically calculated based on grid spacing)")
+            print(f"   - Radius multiplier: {NEIGHBORHOOD_RADIUS_MULTIPLIER}x diagonal step distance")
+        else:
+            print(f"   - Neighborhood radius: {neighborhood_radius} (normalized, 0-1 range, {neighborhood_radius*100:.0f}% of parameter range)")
         print(f"   - Distance weight power: {distance_weight_power} (higher = stronger preference for close neighbors)")
         
         print("\n" + "-"*80)
@@ -665,6 +770,146 @@ class MAOptimization3DVisualizer:
                     print(f"      Avg Neighbor Distance: {top_details['avg_neighbor_distance']:.4f}")
         
         print("\n" + "="*80)
+    
+    def print_overall_top_neighborhood_aware_points(self, metric: str = 'composite_score',
+                                                    top_n: int = 5,
+                                                    neighborhood_radius: float = None,
+                                                    distance_weight_power: float = None) -> List[Dict]:
+        """
+        Print and return the overall top N neighborhood-aware points across ALL risk-reward ratios.
+        
+        This aggregates all parameter combinations from all RR ratios and ranks them by NA score,
+        helping identify the most robust parameters regardless of RR setting.
+        
+        Args:
+            metric: Metric to use for scoring
+            top_n: Number of top points to show
+            neighborhood_radius: Maximum distance for neighborhood consideration
+            distance_weight_power: Power for distance weighting
+            
+        Returns:
+            List of top N points with their details
+        """
+        # Use config defaults if not specified
+        if neighborhood_radius is None:
+            neighborhood_radius = NEIGHBORHOOD_RADIUS
+        if distance_weight_power is None:
+            distance_weight_power = DISTANCE_WEIGHT_POWER
+        
+        # Calculate NA scores for all RR ratios
+        na_scores = self.calculate_neighborhood_aware_scores(
+            metric=metric,
+            neighborhood_radius=neighborhood_radius,
+            distance_weight_power=distance_weight_power
+        )
+        
+        if not na_scores:
+            print("❌ No neighborhood-aware scores available.")
+            return []
+        
+        # Aggregate all points across all RR ratios
+        all_points = []
+        
+        for rr, data in na_scores.items():
+            short_windows = data['short_windows']
+            long_windows = data['long_windows']
+            orig_scores = data['original_scores']
+            na_score_list = data['neighborhood_aware_scores']
+            details_list = data['neighborhood_details']
+            
+            for i in range(len(short_windows)):
+                all_points.append({
+                    'risk_reward_ratio': rr,
+                    'short_window': short_windows[i],
+                    'long_window': long_windows[i],
+                    'original_score': orig_scores[i],
+                    'na_score': na_score_list[i],
+                    'details': details_list[i]
+                })
+        
+        # Sort by NA score (descending)
+        all_points.sort(key=lambda x: x['na_score'], reverse=True)
+        
+        # Get top N
+        top_points = all_points[:top_n]
+        
+        # Print results
+        print("\n" + "="*80)
+        print(f"🏆 OVERALL TOP {top_n} NEIGHBORHOOD-AWARE PARAMETERS (Across All RR Ratios)")
+        print("="*80)
+        print(f"\n📊 Ranked by Neighborhood-Aware Score (higher = better & more robust)")
+        print(f"   Total parameter combinations analyzed: {len(all_points)}")
+        
+        print("\n" + "-"*100)
+        print(f"{'Rank':<6} {'Short':<8} {'Long':<8} {'RR':<8} {'Orig Score':<12} {'NA Score':<12} {'Neighbors':<10} {'Pos/Neg':<10} {'Std Dev':<10}")
+        print("-"*100)
+        
+        for rank, point in enumerate(top_points, 1):
+            details = point['details']
+            neighbor_count = details.get('neighbor_count', 0)
+            pos_count = details.get('positive_count', 0)
+            neg_count = details.get('negative_count', 0)
+            std_dev = details.get('neighborhood_std', 0)
+            pos_neg_str = f"{pos_count}/{neg_count}" if neighbor_count > 0 else "N/A"
+            
+            print(f"{rank:<6} {point['short_window']:<8} {point['long_window']:<8} {point['risk_reward_ratio']:<8} "
+                  f"{point['original_score']:<12.4f} {point['na_score']:<12.4f} {neighbor_count:<10} "
+                  f"{pos_neg_str:<10} {std_dev:<10.4f}")
+        
+        # Show detailed breakdown for #1
+        if top_points:
+            best = top_points[0]
+            details = best['details']
+            
+            print("\n" + "="*80)
+            print("🥇 RECOMMENDED PARAMETERS (Best Overall)")
+            print("="*80)
+            print(f"\n   📈 Parameter Settings:")
+            print(f"      Short Window: {best['short_window']}")
+            print(f"      Long Window: {best['long_window']}")
+            print(f"      Risk-Reward Ratio: {best['risk_reward_ratio']}")
+            
+            print(f"\n   📊 Performance Scores:")
+            print(f"      Original Composite Score: {best['original_score']:.4f}")
+            print(f"      Neighborhood-Aware Score: {best['na_score']:.4f}")
+            
+            print(f"\n   🏘️  Neighborhood Quality:")
+            print(f"      Total Neighbors: {details.get('neighbor_count', 0)}")
+            print(f"      Positive Neighbors: {details.get('positive_count', 0)}")
+            print(f"      Negative Neighbors: {details.get('negative_count', 0)}")
+            print(f"      Neighborhood Avg Score: {details.get('neighborhood_avg', 0):.4f}")
+            print(f"      Neighborhood Std Dev: {details.get('neighborhood_std', 0):.4f} (lower = more stable)")
+            if 'avg_neighbor_distance' in details:
+                print(f"      Avg Neighbor Distance: {details['avg_neighbor_distance']:.4f}")
+            
+            # Check if this point appears in multiple RR ratios' top results
+            similar_params = [p for p in all_points 
+                           if p['short_window'] == best['short_window'] 
+                           and p['long_window'] == best['long_window']]
+            if len(similar_params) > 1:
+                print(f"\n   🔄 Cross-RR Consistency:")
+                print(f"      This parameter combo appears in {len(similar_params)} RR ratios:")
+                for p in similar_params:
+                    print(f"         RR={p['risk_reward_ratio']}: NA Score={p['na_score']:.4f}")
+        
+        # Show parameter frequency analysis
+        print("\n" + "-"*80)
+        print("📊 PARAMETER FREQUENCY IN TOP RESULTS:")
+        print("-"*80)
+        
+        # Count frequency of short/long windows in top results
+        from collections import Counter
+        short_counts = Counter([p['short_window'] for p in top_points])
+        long_counts = Counter([p['long_window'] for p in top_points])
+        rr_counts = Counter([p['risk_reward_ratio'] for p in top_points])
+        
+        print(f"   Most common Short Windows: {dict(short_counts.most_common(3))}")
+        print(f"   Most common Long Windows: {dict(long_counts.most_common(3))}")
+        print(f"   Most common RR Ratios: {dict(rr_counts.most_common(3))}")
+        
+        print("\n" + "="*80)
+        
+        return top_points
     
     def create_3d_plots(self, metric: str = 'composite_score') -> None:
         """

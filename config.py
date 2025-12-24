@@ -22,3 +22,35 @@ KITE_CREDENTIALS={"username":KITE_USERNAME,
             "totp_key": KITE_TOTP_KEY}
 
 KITE_EXCHANGE = "MCX"
+
+# ============================================================================
+# MA Optimization - Neighborhood-Aware Scoring Configuration
+# ============================================================================
+# Neighborhood radius in normalized space (0-1 range)
+# "auto": Dynamically calculate based on grid step sizes (RECOMMENDED)
+#         Automatically adapts to include immediate neighbors regardless of grid spacing
+# 0.1-0.15: Very tight neighborhood (few neighbors, very local)
+# 0.2-0.3: Moderate neighborhood
+# 0.4-0.5: Large neighborhood (many neighbors, broader region)
+NEIGHBORHOOD_RADIUS = "auto"  # Recommended: auto-adapts to grid spacing
+
+# Multiplier for auto radius calculation (how many "steps" to include as neighbors)
+# 1.5: Include immediate diagonal neighbors (8 neighbors in regular grid)
+# 2.0: Include next layer of neighbors (up to 24 neighbors)
+# 2.5: Include wider neighborhood
+NEIGHBORHOOD_RADIUS_MULTIPLIER = 1.5
+
+# Distance weight power for inverse distance weighting
+# Higher = closer neighbors get exponentially more weight
+# 1.0: Linear inverse distance (moderate preference)
+# 2.0: Squared inverse distance (strong preference, recommended)
+# 3.0: Cubic inverse distance (very strong preference)
+DISTANCE_WEIGHT_POWER = 2.0
+
+# Score weighting for neighborhood-aware calculation
+# own_score_weight: Weight for the point's own score (0-1)
+# neighborhood_weight: Weight for neighborhood average score (0-1)
+# negative_penalty_weight: Weight for penalty from negative scores nearby (0-1)
+OWN_SCORE_WEIGHT = 0.5
+NEIGHBORHOOD_WEIGHT = 0.5
+NEGATIVE_PENALTY_WEIGHT = 0.1
