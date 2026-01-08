@@ -564,6 +564,28 @@ class TradingDashboard:
             log_files['decision_log'] = f"Error reading decision log: {e}"
         
         return log_files
+    
+    def get_parameter_validation_status(self, symbol: str) -> Optional[Dict]:
+        """
+        Get parameter validation status for a symbol.
+        
+        Args:
+            symbol: Trading symbol
+            
+        Returns:
+            Validation status dict or None if not found
+        """
+        status_file = os.path.join(self.log_folder, f"validation_status_{symbol}.json")
+        
+        if os.path.exists(status_file):
+            try:
+                with open(status_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"⚠️ Error reading validation status: {e}")
+                return None
+        
+        return None
 
 
     def load_session_strategy_parameters(self) -> Dict:

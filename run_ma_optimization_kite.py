@@ -195,8 +195,8 @@ def main():
     # Define parameter ranges
     # short_window_range = [5, 10, 15, 20, 25, 30]
     # long_window_range = [20, 30, 40, 50, 60, 70]
-    SHORT_VAL = 5
-    LONG_VAL = 60
+    SHORT_VAL = 20
+    LONG_VAL = 50
     RANGE = 9
     # Ensure short_window_range max is less than long_window_range min to avoid invalid combinations
     short_start = max(SHORT_VAL - RANGE, 4)
@@ -206,8 +206,8 @@ def main():
     short_window_range = np.arange(short_start, short_end, 1)
     long_window_range = np.arange(long_start, long_end, 1)
     
-    risk_reward_ratios = [4.0, 4.5, 5.0, 5.5, 6.0]
-    # risk_reward_ratios = [4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0]
+    #risk_reward_ratios = [4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0]
+    risk_reward_ratios = [6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]
     print(f"\n🔍 Running optimization...")
     print(f"   Short windows: {short_window_range}")
     print(f"   Long windows: {long_window_range}")

@@ -53,6 +53,7 @@ from plotly.subplots import make_subplots
 
 from kite_comprehensive_strategy_validation import KiteComprehensiveStrategyValidator
 from trading_engine import TradingEngine
+from parameter_validator import ParameterValidator
 import config as cfg
 
 
@@ -62,14 +63,28 @@ import config as cfg
 # You can override these via command-line arguments if needed
 DEFAULT_SYMBOL = "SILVERMIC26FEBFUT"  # Default Indian stock symbol
 DEFAULT_EXCHANGE = "MCX"  # Default exchange (NSE, BSE, MCX)
+DAYS_TO_VALIDATE = 30
 # use 30 days ago (Kite uses YYYY-MM-DD format)
-DEFAULT_START_DATE = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+DEFAULT_START_DATE = (datetime.now() - timedelta(days=DAYS_TO_VALIDATE)).strftime("%Y-%m-%d")
 # use today's date
 DEFAULT_END_DATE = datetime.now().strftime("%Y-%m-%d")
 DEFAULT_INTERVAL = "15m"  # Will be converted to "15minute" for Kite
 DEFAULT_PARAMS = [
-    {"short_window": 4, "long_window": 58, "risk_reward_ratio": 6.0}
+    {"short_window": 21, "long_window": 51, "risk_reward_ratio": 8.5}
 ]
+DEFAULT_VALIDATION_WINDOW_DAYS = 7  # How often to run validation (every N days)
+
+# Parameter ranges for validation optimization (matching run_ma_optimization_kite.py format)
+VALIDATION_SHORT_VAL = 20  # Center value for short window range
+VALIDATION_LONG_VAL = 50  # Center value for long window range
+VALIDATION_RANGE = 4  # Range around center values
+VALIDATION_SHORT_START = max(VALIDATION_SHORT_VAL - VALIDATION_RANGE, 4)
+VALIDATION_SHORT_END = VALIDATION_SHORT_VAL + VALIDATION_RANGE
+VALIDATION_LONG_START = max(VALIDATION_LONG_VAL - VALIDATION_RANGE, VALIDATION_SHORT_VAL + VALIDATION_RANGE + 1)
+VALIDATION_LONG_END = VALIDATION_LONG_VAL + VALIDATION_RANGE
+DEFAULT_VALIDATION_SHORT_RANGE = list(range(VALIDATION_SHORT_START, VALIDATION_SHORT_END + 1))
+DEFAULT_VALIDATION_LONG_RANGE = list(range(VALIDATION_LONG_START, VALIDATION_LONG_END + 1))
+DEFAULT_VALIDATION_RR_RANGE = [6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]  # Risk-reward ratios to test
 # ============================================================================
 
 
@@ -443,8 +458,21 @@ def run_ma_mock(
     max_loss_percent: float = 2.0,
     trading_fee: float = 0.0003,
     mock_trading_delay: float = 0.0,
-    output_dir: str = "ma_mock_results_kite"
+    output_dir: str = "ma_mock_results_kite",
+    enable_parameter_validation: bool = True,
+    validation_data_window_days: int = 7,  # How often to run validation
+    days_to_validate: int = 30,  # How much past data to use for optimization during validation
+    validation_short_range: List[int] = None,  # Short window range for validation optimization
+    validation_long_range: List[int] = None,  # Long window range for validation optimization
+    validation_rr_range: List[float] = None  # Risk-reward range for validation optimization
 ) -> Dict[str, Any]:
+    # Use defaults if not provided
+    if validation_short_range is None:
+        validation_short_range = DEFAULT_VALIDATION_SHORT_RANGE
+    if validation_long_range is None:
+        validation_long_range = DEFAULT_VALIDATION_LONG_RANGE
+    if validation_rr_range is None:
+        validation_rr_range = DEFAULT_VALIDATION_RR_RANGE
     print("🚀 MA STRATEGY MOCK VALIDATION (KITE)")
     print("=" * 80)
     print(f"Symbol: {symbol}")
@@ -456,6 +484,29 @@ def run_ma_mock(
     # Convert dates to Kite format (YYYY-MM-DD)
     start_date_kite = convert_date_format(start_date)
     end_date_kite = convert_date_format(end_date)
+    
+    # Store original backtest date range (for data leak prevention)
+    original_start_date_kite = start_date_kite
+    original_end_date_kite = end_date_kite
+    
+    # If validation is enabled, we need to fetch extra data from the past
+    # to have enough data for validation after first validation_window_days
+    # We need: days_to_validate days of past data for optimization
+    # So actual start date should be: end_date - (backtest_days + days_to_validate)
+    # IMPORTANT: Extra data is ONLY for validation, NOT for backtesting!
+    if enable_parameter_validation:
+        # Calculate how many days of backtest we have
+        start_dt = datetime.strptime(start_date_kite, '%Y-%m-%d')
+        end_dt = datetime.strptime(end_date_kite, '%Y-%m-%d')
+        backtest_days = (end_dt - start_dt).days
+        
+        # We need to fetch data starting from: end_date - backtest_days - days_to_validate
+        # This ensures after first validation_window_days, we have days_to_validate days of past data
+        actual_start_date = (end_dt - timedelta(days=backtest_days + days_to_validate)).strftime('%Y-%m-%d')
+        print(f"📊 Validation enabled: Fetching extra {days_to_validate} days of past data for validation")
+        print(f"   Fetching data: {actual_start_date} → {end_date_kite}")
+        print(f"   ⚠️  Backtest will ONLY use: {original_start_date_kite} → {original_end_date_kite} (no data leak)")
+        start_date_kite = actual_start_date
     
     # Convert interval to Kite format
     kite_interval = map_interval_to_kite(interval)
@@ -503,13 +554,50 @@ def run_ma_mock(
     if data.empty:
         raise ValueError(f"No data remaining after filtering for {symbol}")
     
-    validator.train_data = data.iloc[:0].copy()
-    validator.test_data = data.copy()
-    validator.symbol = symbol
-    validator.interval = kite_interval
-    
-    print(f"✅ Successfully fetched {len(data)} data points")
-    print(f"📅 Data range: {data.index[0]} to {data.index[-1]}")
+    # CRITICAL: Filter data to ONLY use original backtest date range (prevent data leak)
+    # Extra past data is ONLY for parameter validation, NOT for backtesting
+    if enable_parameter_validation:
+        # Convert original dates to datetime for filtering
+        original_start_dt = datetime.strptime(original_start_date_kite, '%Y-%m-%d')
+        original_end_dt = datetime.strptime(original_end_date_kite, '%Y-%m-%d')
+        
+        # Filter data to only include backtest period
+        def get_date_from_index(idx):
+            ts = pd.Timestamp(idx)
+            if ts.tz is not None:
+                ts = ts.tz_localize(None)
+            return ts.date()
+        
+        backtest_data = data[
+            data.index.map(lambda x: original_start_dt.date() <= get_date_from_index(x) <= original_end_dt.date())
+        ].copy()
+        
+        # Store full data (including extra past) for validation purposes only
+        validation_data = data.copy()
+        
+        print(f"📊 Data fetched: {len(data)} total points")
+        print(f"   Backtest data: {len(backtest_data)} points ({original_start_date_kite} → {original_end_date_kite})")
+        print(f"   Extra past data: {len(data) - len(backtest_data)} points (for validation only)")
+        
+        validator.train_data = backtest_data.iloc[:0].copy()
+        validator.test_data = backtest_data.copy()  # Only backtest period for actual trading
+        validator.symbol = symbol
+        validator.interval = kite_interval
+        
+        # Store validation data separately (not used in backtest)
+        validator._validation_data = validation_data
+        
+        print(f"✅ Backtest will use {len(backtest_data)} data points")
+        print(f"📅 Backtest range: {backtest_data.index[0]} to {backtest_data.index[-1]}")
+    else:
+        # No validation, use all data as before
+        validator.train_data = data.iloc[:0].copy()
+        validator.test_data = data.copy()
+        validator.symbol = symbol
+        validator.interval = kite_interval
+        
+        print(f"✅ Successfully fetched {len(data)} data points")
+        print(f"📅 Data range: {data.index[0]} to {data.index[-1]}")
 
     results: List[Dict[str, Any]] = []
     failed_results: List[Dict[str, Any]] = []  # Track failed parameter sets
@@ -561,10 +649,153 @@ def run_ma_mock(
         print("🚦 Running simulation...")
         start_t = datetime.now()
         
+        # Initialize parameter validator if enabled
+        param_validator = None
+        last_validation_date = None
+        validation_results_history = []
+        
+        if enable_parameter_validation:
+            param_validator = ParameterValidator(
+                validation_frequency_days=validation_data_window_days,
+                data_window_days=days_to_validate,  # Use days_to_validate for optimization window
+                trading_fee=trading_fee,
+                exchange=exchange
+            )
+            # Initialize with Kite fetcher from validator
+            param_validator.kite_fetcher = validator.kite_fetcher
+        
         for j in range(len(validator.test_data)):
             current_data = validator.test_data.iloc[: j + 1]
             current_time = validator.test_data.index[j]
             engine.process_strategy_signals(strategy, current_data, current_time)
+            
+            # Check if we need to run parameter validation
+            if enable_parameter_validation and param_validator:
+                # Extract date from timestamp (handle timezone-aware)
+                current_ts = pd.Timestamp(current_time)
+                if current_ts.tz is not None:
+                    current_ts = current_ts.tz_localize(None)  # Remove timezone for date comparison
+                current_date = current_ts.date()
+                
+                # Check if validation_window_days have passed since last validation
+                should_validate = False
+                if last_validation_date is None:
+                    # First validation after validation_window_days
+                    first_ts = pd.Timestamp(validator.test_data.index[0])
+                    if first_ts.tz is not None:
+                        first_ts = first_ts.tz_localize(None)
+                    first_date = first_ts.date()
+                    days_elapsed = (current_date - first_date).days
+                    if days_elapsed >= validation_data_window_days:
+                        should_validate = True
+                else:
+                    days_since_validation = (current_date - last_validation_date).days
+                    if days_since_validation >= validation_data_window_days:
+                        should_validate = True
+                
+                if should_validate:
+                    print(f"\n{'='*80}")
+                    print(f"🔍 PARAMETER VALIDATION CHECK (Day {current_date})")
+                    print(f"{'='*80}")
+                    
+                    try:
+                        # Get recent data up to current point for validation
+                        # Use DAYS_TO_VALIDATE days of past data for optimization
+                        validation_start_date = current_date - timedelta(days=days_to_validate)
+                        validation_end_date = current_date
+                        
+                        # IMPORTANT: Use validation_data (includes extra past data), NOT test_data
+                        # This ensures we can look back days_to_validate days even from early in backtest
+                        validation_data_source = getattr(validator, '_validation_data', validator.test_data)
+                        
+                        # Filter validation_data to get recent window
+                        # Handle timezone-aware indices
+                        def get_date_from_index(idx):
+                            ts = pd.Timestamp(idx)
+                            if ts.tz is not None:
+                                ts = ts.tz_localize(None)
+                            return ts.date()
+                        
+                        recent_data = validation_data_source[
+                            validation_data_source.index.map(lambda x: validation_start_date <= get_date_from_index(x) <= validation_end_date)
+                        ].copy()
+                        
+                        if len(recent_data) < 50:  # Need minimum data points
+                            print(f"⚠️  Insufficient data for validation ({len(recent_data)} points), skipping...")
+                            print(f"   Need at least {days_to_validate} days of past data from {validation_start_date}")
+                        else:
+                            print(f"📊 Validating on {len(recent_data)} data points from {validation_start_date} to {validation_end_date}")
+                            print(f"   Using {days_to_validate} days of past data for optimization")
+                            
+                            # Run optimization on recent data with specified ranges
+                            new_optimal_params, new_optimal_metrics = param_validator.run_optimization(
+                                recent_data,
+                                short_window_range=validation_short_range,
+                                long_window_range=validation_long_range,
+                                risk_reward_range=validation_rr_range
+                            )
+                            
+                            # Evaluate current parameters
+                            current_metrics = param_validator.evaluate_parameters(recent_data, params_with_fee)
+                            
+                            # Calculate distance and gap
+                            param_distance = param_validator.calculate_parameter_distance(params_with_fee, new_optimal_params)
+                            performance_gap = new_optimal_metrics.get('total_pnl', 0) - current_metrics.get('total_pnl', 0)
+                            
+                            # Determine alert level
+                            alert_level = 'none'
+                            if param_distance >= param_validator.distance_threshold_critical or performance_gap >= param_validator.performance_gap_threshold * 2:
+                                alert_level = 'critical'
+                            elif param_distance >= param_validator.distance_threshold_warning or performance_gap >= param_validator.performance_gap_threshold:
+                                alert_level = 'warning'
+                            elif param_distance >= param_validator.distance_threshold_monitor:
+                                alert_level = 'monitor'
+                            
+                            should_reopt = alert_level in ['warning', 'critical']
+                            
+                            # Report results
+                            status_emoji = {
+                                'none': '✅',
+                                'monitor': '📊',
+                                'warning': '⚠️',
+                                'critical': '🚨'
+                            }
+                            emoji = status_emoji.get(alert_level, '❓')
+                            
+                            print(f"{emoji} Validation Results:")
+                            print(f"   Parameter Distance: {param_distance:.2f}")
+                            print(f"   Performance Gap: {performance_gap:.2%}")
+                            print(f"   Alert Level: {alert_level.upper()}")
+                            print(f"   Current Params: Short={params_with_fee['short_window']}, Long={params_with_fee['long_window']}, RR={params_with_fee['risk_reward_ratio']}")
+                            print(f"   New Optimal: Short={new_optimal_params['short_window']}, Long={new_optimal_params['long_window']}, RR={new_optimal_params['risk_reward_ratio']}")
+                            
+                            if should_reopt:
+                                print(f"   ⚠️  RECOMMENDATION: Parameters have drifted - consider re-optimization!")
+                                if alert_level == 'critical':
+                                    print(f"   🚨 CRITICAL: Strong recommendation to stop and re-optimize")
+                            else:
+                                print(f"   ✅ Parameters still optimal - continue trading")
+                            
+                            # Store validation result
+                            validation_results_history.append({
+                                'date': current_date.isoformat(),
+                                'parameter_distance': param_distance,
+                                'performance_gap': performance_gap,
+                                'alert_level': alert_level,
+                                'should_reoptimize': should_reopt,
+                                'current_params': params_with_fee.copy(),
+                                'new_optimal_params': new_optimal_params.copy(),
+                                'current_performance': current_metrics,
+                                'new_optimal_performance': new_optimal_metrics
+                            })
+                            
+                            last_validation_date = current_date
+                            print(f"{'='*80}\n")
+                            
+                    except Exception as e:
+                        print(f"⚠️  Validation failed: {e}")
+                        import traceback
+                        traceback.print_exc()
             
             if mock_trading_delay > 0:
                 import time
@@ -585,6 +816,11 @@ def run_ma_mock(
             "simulation_duration_sec": duration_s,
             "session_id": session_id,
         }
+        
+        # Store validation history in result (after result is created)
+        if enable_parameter_validation and validation_results_history:
+            result['parameter_validation_history'] = validation_results_history
+        
         results.append(result)
 
         print(f"✅ Done. Final Balance: ${final_status['current_balance']:,.2f}")
@@ -610,17 +846,19 @@ def run_ma_mock(
         for r in results:
             csv_path = os.path.join(output_dir, f"{r['session_id']}_trades.csv")
             r["trade_history"].to_csv(csv_path, index=False)
-            serializable.append(
-                {
-                    "parameter_set": r["parameter_set"],
-                    "parameters": r["parameters"],
-                    "final_status": r["final_status"],
-                    "performance_metrics": r["performance_metrics"],
-                    "simulation_duration_sec": r["simulation_duration_sec"],
-                    "session_id": r["session_id"],
-                    "trade_history_csv": csv_path,
-                }
-            )
+            result_dict = {
+                "parameter_set": r["parameter_set"],
+                "parameters": r["parameters"],
+                "final_status": r["final_status"],
+                "performance_metrics": r["performance_metrics"],
+                "simulation_duration_sec": r["simulation_duration_sec"],
+                "session_id": r["session_id"],
+                "trade_history_csv": csv_path,
+            }
+            # Include parameter validation history if available
+            if "parameter_validation_history" in r:
+                result_dict["parameter_validation_history"] = r["parameter_validation_history"]
+            serializable.append(result_dict)
 
         with open(out_json, "w") as f:
             json.dump(
@@ -694,6 +932,53 @@ def run_ma_mock(
         for failed in failed_results:
             print(f"   - Set {failed['parameter_set']}: {failed['error']} (stage: {failed['stage']})")
 
+    # =========================================================================
+    # FINAL PARAMETER VALIDATION SUMMARY
+    # =========================================================================
+    if enable_parameter_validation and results:
+        print("\n" + "=" * 80)
+        print("📋 PARAMETER VALIDATION SUMMARY")
+        print("=" * 80)
+        print("Summary of periodic validation checks during simulation...")
+        print(f"Validation was performed every {validation_data_window_days} days during backtest")
+        print(f"Each validation used {days_to_validate} days of past data for optimization")
+        
+        # Print validation history from during simulation
+        for r in results:
+            if r.get('parameter_validation_history'):
+                params = r['parameters']
+                print(f"\n📊 Param Set {r['parameter_set']} (S={params.get('short_window')}, L={params.get('long_window')}, RR={params.get('risk_reward_ratio')}):")
+                print(f"   Validation checks performed: {len(r['parameter_validation_history'])}")
+                
+                for val_check in r['parameter_validation_history']:
+                    alert_level = val_check.get('alert_level', 'none')
+                    status_emoji = {
+                        'none': '✅',
+                        'monitor': '📊',
+                        'warning': '⚠️',
+                        'critical': '🚨'
+                    }
+                    emoji = status_emoji.get(alert_level, '❓')
+                    
+                    print(f"   {emoji} {val_check['date']}: Distance={val_check['parameter_distance']:.2f}, Gap={val_check['performance_gap']:.2%}, Level={alert_level.upper()}")
+                    if val_check.get('should_reoptimize'):
+                        print(f"      ⚠️  Re-optimization recommended at this point")
+                
+                # Overall recommendation
+                critical_count = sum(1 for v in r['parameter_validation_history'] if v.get('alert_level') == 'critical')
+                warning_count = sum(1 for v in r['parameter_validation_history'] if v.get('alert_level') == 'warning')
+                
+                if critical_count > 0:
+                    print(f"   🚨 CRITICAL: {critical_count} critical drift(s) detected during simulation")
+                elif warning_count > 0:
+                    print(f"   ⚠️  WARNING: {warning_count} warning(s) detected during simulation")
+                else:
+                    print(f"   ✅ Parameters remained optimal throughout simulation")
+            else:
+                params = r['parameters']
+                print(f"\n📊 Param Set {r['parameter_set']} (S={params.get('short_window')}, L={params.get('long_window')}, RR={params.get('risk_reward_ratio')}):")
+                print(f"   ⚠️  No validation checks performed (insufficient data or validation disabled)")
+
     print("\n🎯 Completed MA mock validation.")
     return {
         "symbol": symbol,
@@ -718,9 +1003,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--initial-balance", type=float, default=10000.0)
     p.add_argument("--max-leverage", type=float, default=10.0)
     p.add_argument("--max-loss-percent", type=float, default=2.0)
-    p.add_argument("--trading-fee", type=float, default=0.0003)
+    p.add_argument("--trading-fee", type=float, default=0.0000)
     p.add_argument("--mock-delay", type=float, default=0.0, help="Seconds between ticks")
     p.add_argument("--out", default="ma_mock_results_kite", help="Output directory")
+    p.add_argument("--no-parameter-validation", action="store_true", 
+                   help="Disable parameter validation after backtest")
+    p.add_argument("--validation-window-days", type=int, default=DEFAULT_VALIDATION_WINDOW_DAYS,
+                   help=f"Days of recent data to use for parameter validation (default: {DEFAULT_VALIDATION_WINDOW_DAYS})")
     return p.parse_args()
 
 
@@ -750,6 +1039,12 @@ def main():
         trading_fee=args.trading_fee,
         mock_trading_delay=args.mock_delay,
         output_dir=args.out,
+        enable_parameter_validation=not args.no_parameter_validation,
+        validation_data_window_days=args.validation_window_days,
+        days_to_validate=DAYS_TO_VALIDATE,
+        validation_short_range=DEFAULT_VALIDATION_SHORT_RANGE,
+        validation_long_range=DEFAULT_VALIDATION_LONG_RANGE,
+        validation_rr_range=DEFAULT_VALIDATION_RR_RANGE,
     )
 
 
