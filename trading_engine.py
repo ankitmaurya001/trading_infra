@@ -207,6 +207,60 @@ class TradingEngine:
             self.trade_history.append(rejection)
             self._log_trade(rejection, price, timestamp)
             return rejection
+        
+        # Margin check for Kite broker (lot-based trading)
+        # Check margin even in virtual mode to validate trades would be possible
+        if self.broker and hasattr(self.broker, 'get_order_margins'):
+            try:
+                # Use Kite's order_margins API to get ACTUAL margin requirement
+                # This gives the real margin needed, not an estimate
+                transaction_type = 'BUY' if position_type.name == 'LONG' else 'SELL'
+                
+                order_margins = self.broker.get_order_margins(
+                    symbol=self.symbol,
+                    transaction_type=transaction_type,
+                    quantity=1,  # 1 lot for commodities
+                    price=price,
+                    order_type='MARKET'
+                )
+                
+                actual_margin_required = order_margins.get('total', 0.0)
+                
+                if actual_margin_required == 0.0:
+                    print(f"⚠️  Could not get actual margin requirement. Proceeding with trade...")
+                else:
+                    # Check margin with buffer
+                    margins = self.broker.check_margins()
+                    available_margin = margins.get('available', 0.0)
+                    margin_buffer_percent = 20  # Default 20% buffer
+                    required_with_buffer = actual_margin_required * (1 + margin_buffer_percent / 100)
+                    
+                    if available_margin < required_with_buffer:
+                        reason = f"Insufficient margin: {available_margin:.2f} < {required_with_buffer:.2f} (required: {actual_margin_required:.2f})"
+                        print(f"⛔ Trade rejected: {reason}")
+                        rejection = {
+                            'id': len(self.trade_history) + 1,
+                            'strategy': strategy.name,
+                            'action': action,
+                            'entry_price': price,
+                            'entry_time': timestamp,
+                            'quantity': 0.0,
+                            'leverage': 0.0,
+                            'position_size': 0.0,
+                            'atr': current_atr,
+                            'status': 'rejected',
+                            'pnl': 0,
+                            'reject_reason': reason
+                        }
+                        self.trade_history.append(rejection)
+                        self._log_trade(rejection, price, timestamp)
+                        return rejection
+                    else:
+                        print(f"✅ Margin check passed: {available_margin:.2f} >= {required_with_buffer:.2f} (actual margin: {actual_margin_required:.2f})")
+            except Exception as e:
+                print(f"⚠️  Margin check failed: {e}. Proceeding with trade...")
+                import traceback
+                traceback.print_exc()
 
         # Calculate stop loss and take profit levels
         take_profit, stop_loss = strategy.calculate_trade_levels(price, position_type, current_atr)
@@ -214,34 +268,76 @@ class TradingEngine:
         # Try external broker execution if configured
         broker_order = None
         stop_loss_order = None
+        gtt_order = None
         if self.broker and self.use_broker:
             try:
+                # Check if this is a Kite broker (for lot-based trading and GTT)
+                is_kite_broker = hasattr(self.broker, 'place_gtt_order')
+                
+                # For Kite broker, use lot-based quantity (1 lot)
+                # For other brokers, use calculated quantity
+                order_quantity = 1 if is_kite_broker else quantity
+                
                 # Place MARKET order for immediate execution
                 broker_order = self.broker.place_order(
                     symbol=self.symbol,
                     side='BUY' if position_type.name == 'LONG' else 'SELL',
                     order_type='MARKET',
-                    quantity=quantity
+                    quantity=order_quantity
                 )
-                print(f"[Broker] Entry order placed: {broker_order.get('orderId')}")
+                order_id = broker_order.get('orderId') or broker_order.get('order_id')
+                print(f"[Broker] Entry order placed: {order_id}")
                 
-                # Place stop-loss order
-                stop_side = 'SELL' if position_type.name == 'LONG' else 'BUY'
-                stop_loss_order = self.broker.place_order(
-                    symbol=self.symbol,
-                    side=stop_side,
-                    order_type='STOP_LOSS',
-                    quantity=quantity,
-                    price=stop_loss  # stopPrice for STOP_MARKET
-                )
-                print(f"[Broker] Stop-loss order placed: {stop_loss_order.get('orderId')} at ${stop_loss:.2f}")
+                # For Kite broker, use GTT for stop-loss (persists overnight)
+                # For other brokers, use regular stop-loss order
+                if is_kite_broker:
+                    # Determine transaction type for GTT
+                    gtt_transaction_type = 'SELL' if position_type.name == 'LONG' else 'BUY'
+                    
+                    # Place GTT stop-loss order
+                    gtt_order = self.broker.place_gtt_order(
+                        symbol=self.symbol,
+                        trigger_price=stop_loss,
+                        last_price=price,
+                        transaction_type=gtt_transaction_type,
+                        quantity=order_quantity,
+                        order_price=stop_loss
+                    )
+                    gtt_id = gtt_order.get('gtt_id') or gtt_order.get('trigger_id')
+                    print(f"[Broker] GTT stop-loss order placed: {gtt_id} at ${stop_loss:.2f}")
+                    stop_loss_order = gtt_order  # Store GTT order as stop_loss_order for compatibility
+                else:
+                    # Place regular stop-loss order for non-Kite brokers
+                    stop_side = 'SELL' if position_type.name == 'LONG' else 'BUY'
+                    stop_loss_order = self.broker.place_order(
+                        symbol=self.symbol,
+                        side=stop_side,
+                        order_type='STOP_LOSS',
+                        quantity=order_quantity,
+                        price=stop_loss
+                    )
+                    stop_order_id = stop_loss_order.get('orderId') or stop_loss_order.get('order_id')
+                    print(f"[Broker] Stop-loss order placed: {stop_order_id} at ${stop_loss:.2f}")
                 
             except Exception as e:
                 print(f"[Broker] Order placement failed, falling back to virtual fill: {e}")
                 broker_order = None
                 stop_loss_order = None
+                gtt_order = None
 
         # Create trade record
+        # Extract order IDs (handle both 'orderId' and 'order_id' formats)
+        broker_order_id = None
+        if isinstance(broker_order, dict):
+            broker_order_id = broker_order.get('orderId') or broker_order.get('order_id')
+        
+        stop_loss_order_id = None
+        gtt_id = None
+        if isinstance(stop_loss_order, dict):
+            # Check if it's a GTT order
+            gtt_id = stop_loss_order.get('gtt_id') or stop_loss_order.get('trigger_id')
+            stop_loss_order_id = stop_loss_order.get('orderId') or stop_loss_order.get('order_id') or gtt_id
+        
         trade = {
             'id': len(self.trade_history) + 1,
             'strategy': strategy.name,
@@ -256,8 +352,9 @@ class TradingEngine:
             'stop_loss': stop_loss,
             'status': 'open',
             'pnl': 0,
-            'broker_order_id': broker_order.get('orderId') if isinstance(broker_order, dict) else None,
-            'stop_loss_order_id': stop_loss_order.get('orderId') if isinstance(stop_loss_order, dict) else None
+            'broker_order_id': broker_order_id,
+            'stop_loss_order_id': stop_loss_order_id,
+            'gtt_id': gtt_id  # Store GTT ID separately for Kite broker
         }
         
         # Update balance (subtract the margin requirement, not the full position size)
@@ -279,7 +376,7 @@ class TradingEngine:
         
         return trade
     
-    def close_trades(self, strategy: BaseStrategy, position_type: str, price: float, timestamp: datetime) -> List[Dict]:
+    def close_trades(self, strategy: BaseStrategy, position_type: str, price: float, timestamp: datetime, exit_type: str = None) -> List[Dict]:
         """
         Close existing trades.
         
@@ -288,6 +385,7 @@ class TradingEngine:
             position_type: Type of position to close ('LONG' or 'SHORT')
             price: Current price
             timestamp: Close timestamp
+            exit_type: Optional exit type ('tp_hit', 'sl_hit', 'closed'). If None, will try to detect from strategy.
             
         Returns:
             List of closed trades
@@ -314,68 +412,70 @@ class TradingEngine:
                     margin_used = position_size / leverage
                     pnl = dollar_pnl / margin_used if margin_used > 0 else 0
                     
-                    # Handle broker position closure based on exit type
+                    # Handle broker position closure
                     broker_exit_order = None
                     if self.broker and self.use_broker and trade.get('broker_order_id'):
-                        # Get detailed status from strategy's trade history to determine exit type
-                        exit_status = None
-                        strategy_trades = strategy.get_trade_history()
-                        if not strategy_trades.empty:
-                            # Find the most recent closed trade from the strategy
-                            recent_trades = strategy_trades.tail(1)
-                            if not recent_trades.empty:
-                                exit_status = recent_trades['Status'].iloc[0]
+                        # Determine exit status - use provided exit_type or try to detect from strategy
+                        exit_status = exit_type
+                        if exit_status is None:
+                            strategy_trades = strategy.get_trade_history()
+                            if not strategy_trades.empty:
+                                recent_trades = strategy_trades.tail(1)
+                                if not recent_trades.empty:
+                                    exit_status = recent_trades['Status'].iloc[0]
                         
-                        if exit_status == "sl_hit":
-                            # Stop-loss was hit - broker already closed position
-                            print(f"[Broker] Stop-loss hit detected - position already closed by exchange")
-                            # Cancel any remaining stop-loss order (might already be filled)
-                            if trade.get('stop_loss_order_id'):
-                                try:
-                                    cancel_result = self.broker.cancel_order(self.symbol, trade['stop_loss_order_id'])
-                                    print(f"[Broker] Remaining stop-loss order cancelled: {trade['stop_loss_order_id']}")
-                                except Exception as cancel_e:
-                                    print(f"[Broker] Stop-loss order likely already filled: {cancel_e}")
+                        # Check if this is a Kite broker (has GTT support)
+                        is_kite_broker = hasattr(self.broker, 'delete_gtt')
                         
-                        elif exit_status == "tp_hit" or exit_status == "closed":
-                            # Take-profit hit or manual exit - CANCEL STOP-LOSS FIRST, then place market order
+                        # ALWAYS cancel/delete the GTT stop-loss order first (if exists)
+                        # This prevents orphaned GTTs that could create unwanted positions
+                        if is_kite_broker and trade.get('gtt_id'):
                             try:
-                                # STEP 1: Cancel stop-loss order BEFORE placing take-profit
-                                if trade.get('stop_loss_order_id'):
-                                    try:
-                                        # Check if stop-loss still exists
-                                        open_orders = self.broker.get_open_orders(self.symbol)
-                                        order_exists = any(str(order.get('orderId')) == str(trade['stop_loss_order_id']) 
-                                                         for order in open_orders)
-                                        
-                                        if order_exists:
-                                            cancel_result = self.broker.cancel_order(self.symbol, trade['stop_loss_order_id'])
-                                            print(f"[Broker] Stop-loss order cancelled: {trade['stop_loss_order_id']}")
-                                        else:
-                                            print(f"[Broker] Stop-loss order {trade['stop_loss_order_id']} already filled or doesn't exist")
-                                            
-                                    except Exception as cancel_e:
-                                        error_msg = str(cancel_e)
-                                        if "Unknown order sent" in error_msg or "-2011" in error_msg:
-                                            print(f"[Broker] Stop-loss order {trade['stop_loss_order_id']} already filled or cancelled")
-                                        else:
-                                            print(f"[Broker] Failed to cancel stop-loss order: {cancel_e}")
-                                
-                                # STEP 2: Now place the take-profit market order
+                                self.broker.delete_gtt(trade['gtt_id'])
+                                print(f"[Broker] GTT stop-loss order deleted: {trade['gtt_id']}")
+                            except Exception as delete_e:
+                                error_msg = str(delete_e).lower()
+                                if "not found" in error_msg or "already" in error_msg or "triggered" in error_msg:
+                                    print(f"[Broker] GTT {trade['gtt_id']} already deleted or triggered")
+                                else:
+                                    print(f"[Broker] Failed to delete GTT: {delete_e}")
+                        elif trade.get('stop_loss_order_id') and not is_kite_broker:
+                            # Cancel regular stop-loss order for non-Kite brokers
+                            try:
+                                open_orders = self.broker.get_open_orders(self.symbol)
+                                order_exists = any(str(order.get('orderId')) == str(trade['stop_loss_order_id']) 
+                                                 for order in open_orders)
+                                if order_exists:
+                                    self.broker.cancel_order(self.symbol, trade['stop_loss_order_id'])
+                                    print(f"[Broker] Stop-loss order cancelled: {trade['stop_loss_order_id']}")
+                            except Exception as cancel_e:
+                                error_msg = str(cancel_e)
+                                if "Unknown order sent" in error_msg or "-2011" in error_msg:
+                                    print(f"[Broker] Stop-loss order {trade['stop_loss_order_id']} already filled or cancelled")
+                                else:
+                                    print(f"[Broker] Failed to cancel stop-loss order: {cancel_e}")
+                        
+                        # Now handle the exit order based on exit type
+                        if exit_status == "sl_hit":
+                            # Stop-loss was hit - broker already closed position (GTT triggered)
+                            print(f"[Broker] Stop-loss hit detected - position already closed by exchange")
+                        else:
+                            # Take-profit hit, manual exit, or any other exit - place market order
+                            try:
                                 exit_side = 'SELL' if trade['action'] == 'BUY' else 'BUY'
+                                # For Kite broker, use 1 lot; for others, use trade quantity
+                                exit_quantity = 1 if is_kite_broker else trade['quantity']
                                 broker_exit_order = self.broker.place_order(
                                     symbol=self.symbol,
                                     side=exit_side,
                                     order_type='MARKET',
-                                    quantity=trade['quantity']
+                                    quantity=exit_quantity
                                 )
-                                print(f"[Broker] Take-profit/manual exit order placed: {broker_exit_order.get('orderId')}")
-                                        
+                                exit_order_id = broker_exit_order.get('orderId') or broker_exit_order.get('order_id')
+                                print(f"[Broker] Exit order placed: {exit_order_id} (exit_type: {exit_status or 'manual'})")
                             except Exception as e:
                                 print(f"[Broker] Exit order failed, using virtual close: {e}")
                                 broker_exit_order = None
-                        else:
-                            print(f"[Broker] Unknown exit status: {exit_status}, using virtual close")
 
                     # Update trade
                     trade['exit_price'] = price

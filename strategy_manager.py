@@ -400,6 +400,39 @@ class StrategyManager:
         
         return merged
     
+    def get_strategy_by_name(self, strategy_name: str):
+        """
+        Get a strategy instance by name.
+        
+        Args:
+            strategy_name: Name of the strategy (e.g., 'Moving Average Crossover', 'ma', 'rsi')
+            
+        Returns:
+            Strategy instance or None if not found
+        """
+        # Map short names to full strategy names
+        name_mapping = {
+            'ma': 'Moving Average Crossover',
+            'rsi': 'RSI Strategy',
+            'donchian': 'Donchian Channel Breakout'
+        }
+        
+        # Try to get full name from mapping, otherwise use as-is
+        full_name = name_mapping.get(strategy_name.lower(), strategy_name)
+        
+        # Find strategy in list by matching name
+        for strategy in self.strategies:
+            if strategy.name == full_name or strategy.name == strategy_name:
+                return strategy
+            # Also check if the short name matches
+            if strategy_name.lower() in ['ma', 'rsi', 'donchian']:
+                if (strategy_name.lower() == 'ma' and 'Moving Average' in strategy.name) or \
+                   (strategy_name.lower() == 'rsi' and 'RSI' in strategy.name) or \
+                   (strategy_name.lower() == 'donchian' and 'Donchian' in strategy.name):
+                    return strategy
+        
+        return None
+    
     def get_strategies(self) -> List:
         """
         Get the list of initialized strategies.

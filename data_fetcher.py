@@ -109,24 +109,58 @@ class KiteDataFetcher:
     Provides real-time and historical data for Indian markets
     """
     
-    def __init__(self, credentials: Dict[str, Any], exchange='NSE'):
+    def __init__(self, credentials: Dict[str, Any], exchange='NSE', token_cache_file='access_token.txt'):
         """
         Initialize Kite Connect data fetcher
         
         Args:
-            api_key (str): Your Kite Connect API key
-            api_secret (str): Your Kite Connect API secret
-            access_token (str, optional): Access token if already authenticated
+            credentials: Dictionary containing:
+                - api_key: Your Kite Connect API key
+                - api_secret: Your Kite Connect API secret
+                - username (optional): Username for login
+                - password (optional): Password for login
+                - totp_key (optional): TOTP key for 2FA
+                - access_token (optional): Access token if already authenticated
+            exchange: Exchange name (default: 'NSE')
+            token_cache_file: Path to file where access token will be cached (default: 'access_token.txt')
         """
-        
-            
         self.kite = KiteConnect(api_key=credentials["api_key"])
         self.credentials = credentials
         self.instrument_tokens = {}
         self.exchange = exchange
+        self.token_cache_file = token_cache_file
+        
+        # If access_token is provided in credentials, use it directly (skip cache)
+        if "access_token" in credentials and credentials["access_token"]:
+            self.kite.set_access_token(credentials["access_token"])
+            print("[INFO] Using provided access_token (skipping cache check)")
+            self._load_instruments()
+        else:
+            # Try to load cached access token first
+            cached_token = self._load_cached_token()
+            if cached_token:
+                self.kite.set_access_token(cached_token)
+                # Verify token is still valid
+                if self._is_token_valid():
+                    print(f"[INFO] Using cached access token from {self.token_cache_file}")
+                    self._load_instruments()
+                else:
+                    print(f"[INFO] Cached token expired or invalid, will authenticate...")
+                    self.kite._access_token = None  # Clear invalid token
 
 
     def authenticate(self):
+        """
+        Authenticate with Kite Connect.
+        If access token is already set and valid, this method does nothing.
+        Otherwise, performs full authentication and caches the token.
+        """
+        # Check if we already have a valid token
+        if hasattr(self.kite, '_access_token') and self.kite._access_token:
+            if self._is_token_valid():
+                print("[INFO] Already authenticated with valid token, skipping authentication...")
+                return
+        
         session = requests.Session()
         # Step 1: Get login URL
         response = session.get(self.kite.login_url())
@@ -136,16 +170,106 @@ class KiteDataFetcher:
             "password": self.credentials["password"],
         }
         login_response = session.post("https://kite.zerodha.com/api/login", login_payload)
+        
+        # Check login response and extract request_id
+        try:
+            login_json = login_response.json()
+            print(f"[INFO] login_response.status_code = {login_response.status_code}")
+            print(f"[INFO] login_response.json() = {login_json}")
+        except Exception as e:
+            print(f"[ERROR] Could not parse login response: {e}")
+            print(f"[ERROR] Response text: {login_response.text}")
+            raise ValueError(f"Login failed: Could not parse response - {e}")
+        
+        if login_response.status_code != 200:
+            error_json = login_json if 'login_json' in locals() else {}
+            error_msg = error_json.get('message', login_response.text)
+            
+            # Check for account lock or CAPTCHA
+            if error_json.get('data', {}).get('captcha'):
+                raise ValueError(
+                    f"⚠️  CAPTCHA Required / Account Locked!\n"
+                    f"   Status: {login_response.status_code}\n"
+                    f"   Message: {error_msg}\n\n"
+                    f"   This usually happens when:\n"
+                    f"   1. Account is locked due to repeated 2FA failures\n"
+                    f"   2. Too many failed login attempts\n\n"
+                    f"   Solutions:\n"
+                    f"   1. Unlock account: Login to Kite Web and unlock if locked\n"
+                    f"   2. Verify TOTP: Run 'python test_totp.py' to test TOTP generation\n"
+                    f"   3. Wait: Account may auto-unlock after some time\n"
+                    f"   4. Contact Zerodha: If account remains locked\n"
+                )
+            
+            raise ValueError(f"Login failed with status {login_response.status_code}: {error_msg}")
+        
+        # Extract request_id - try different possible structures
+        request_id = None
+        if "data" in login_json and isinstance(login_json["data"], dict):
+            request_id = login_json["data"].get("request_id")
+        elif "request_id" in login_json:
+            request_id = login_json["request_id"]
+        else:
+            # Try to find request_id anywhere in nested structure
+            def find_request_id(obj):
+                if isinstance(obj, dict):
+                    if "request_id" in obj:
+                        return obj["request_id"]
+                    for value in obj.values():
+                        result = find_request_id(value)
+                        if result is not None:
+                            return result
+                elif isinstance(obj, list):
+                    for item in obj:
+                        result = find_request_id(item)
+                        if result is not None:
+                            return result
+                return None
+            
+            request_id = find_request_id(login_json)
+        
+        if request_id is None:
+            raise ValueError(f"Could not find 'request_id' in login response. Response structure: {login_json}")
+        
+        print(f"[INFO] request_id = {request_id}")
+        
         # Step 3: TOTP 2FA
+        totp_value = otp.get_totp(self.credentials["totp_key"])
+        print(f"[INFO] Generated TOTP: {totp_value}")
+        
         totp_payload = {
             "user_id": self.credentials["username"],
-            "request_id": login_response.json()["data"]["request_id"],
-            "twofa_value": otp.get_totp(self.credentials["totp_key"]),
+            "request_id": request_id,
+            "twofa_value": totp_value,
             "twofa_type": "totp",
             "skip_session": True,
         }
         totp_response = session.post("https://kite.zerodha.com/api/twofa", totp_payload)
-        print(f"[INFO] totp_response = {totp_response}")
+        print(f"[INFO] totp_response.status_code = {totp_response.status_code}")
+        
+        # Check TOTP response
+        if totp_response.status_code != 200:
+            try:
+                totp_error = totp_response.json()
+                print(f"[INFO] totp_response.json() = {totp_error}")
+                if "Invalid" in str(totp_error) or "invalid" in str(totp_error).lower():
+                    raise ValueError(
+                        f"⚠️  TOTP Authentication Failed!\n"
+                        f"   Status: {totp_response.status_code}\n"
+                        f"   Error: {totp_error}\n\n"
+                        f"   Possible causes:\n"
+                        f"   1. TOTP key is incorrect or expired\n"
+                        f"   2. TOTP is out of sync (time drift)\n"
+                        f"   3. Account is locked\n\n"
+                        f"   Solutions:\n"
+                        f"   1. Test TOTP: Run 'python test_totp.py' to verify TOTP generation\n"
+                        f"   2. Verify TOTP key in config matches Kite Web → Settings → API → TOTP\n"
+                        f"   3. Regenerate TOTP in Kite if needed\n"
+                        f"   4. Unlock account if locked\n"
+                    )
+            except:
+                pass
+            raise ValueError(f"TOTP authentication failed: {totp_response.status_code} - {totp_response.text}")
 
         request_token = None
         # Step 4: Extract request token
@@ -169,8 +293,81 @@ class KiteDataFetcher:
             raise ValueError("[ERROR] Request token not found")
         data = self.kite.generate_session(request_token, api_secret=self.credentials["api_secret"])
         #print(data)
-        self.kite.set_access_token(data["access_token"])
+        access_token = data["access_token"]
+        self.kite.set_access_token(access_token)
+        
+        # Save access token to cache file
+        self._save_token_to_cache(access_token)
+        print(f"[INFO] Access token saved to {self.token_cache_file}")
+        
+        profile = self.fetch_profile()
         self._load_instruments()
+    
+    def _save_token_to_cache(self, access_token: str):
+        """
+        Save access token to cache file.
+        
+        Args:
+            access_token: The access token to save
+        """
+        try:
+            import os
+            # Save to file in the same directory as the script
+            cache_path = os.path.join(os.path.dirname(__file__), self.token_cache_file)
+            with open(cache_path, 'w') as f:
+                f.write(access_token)
+            # Set restrictive permissions (read/write for owner only)
+            os.chmod(cache_path, 0o600)
+        except Exception as e:
+            logging.warning(f"Could not save access token to cache: {e}")
+    
+    def _load_cached_token(self) -> Optional[str]:
+        """
+        Load access token from cache file if it exists.
+        
+        Returns:
+            Access token string if found, None otherwise
+        """
+        try:
+            import os
+            cache_path = os.path.join(os.path.dirname(__file__), self.token_cache_file)
+            if os.path.exists(cache_path):
+                with open(cache_path, 'r') as f:
+                    token = f.read().strip()
+                    if token:
+                        return token
+        except Exception as e:
+            logging.debug(f"Could not load cached token: {e}")
+        return None
+    
+    def _is_token_valid(self) -> bool:
+        """
+        Check if the current access token is valid by making a simple API call.
+        
+        Returns:
+            True if token is valid, False otherwise
+        """
+        try:
+            # Try to fetch profile - this is a lightweight API call
+            self.kite.profile()
+            return True
+        except Exception as e:
+            # Token is invalid or expired
+            logging.debug(f"Token validation failed: {e}")
+            return False
+        
+    def fetch_profile(self):
+        """Fetch profile from Kite Connect"""
+        profile = None
+        try:
+            profile = self.kite.profile()
+            print(f"[INFO] profile = {profile}")
+            return profile
+        except Exception as e:
+            logging.error(f"Error fetching profile: {e}")
+            return None
+        print(f"[INFO] profile = {profile}")
+        return profile
         
        
     def _load_instruments(self):

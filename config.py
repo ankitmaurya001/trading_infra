@@ -12,8 +12,9 @@ KITE_API_SECRET = "xorznn9fcocx1xww4uflrqprsorrij4t"
 
 # Your Zerodha login credentials (for automated authentication)
 KITE_USERNAME = "KMX177"  # Replace with your actual username
-KITE_PASSWORD = "Jack298!"  # Replace with your actual password
-KITE_TOTP_KEY = "N6RGEW7E5VBDTGBLFOONFU3KOQZGR27G"  # Replace with your actual TOTP key
+KITE_PASSWORD = "Krishna298!"  # Replace with your actual password
+#KITE_TOTP_KEY = "N6RGEW7E5VBDTGBLFOONFU3KOQZGR27G"  # Replace with your actual TOTP key
+KITE_TOTP_KEY = "2DP2PLIZCIZQTPEYSB7Z6AL7QB2YUVKX"
 
 KITE_CREDENTIALS={"username":KITE_USERNAME, 
              "password" : KITE_PASSWORD,

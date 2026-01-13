@@ -16,7 +16,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from ma_3d_optimization_visualizer import MAOptimization3DVisualizer
 
 #SYMBOL = "GOLD25DECFUT"  # Default Indian stock symbol
-SYMBOL = "SILVERMIC26FEBFUT"  # Default Indian stock symbol
+#SYMBOL = "SILVERMIC26FEBFUT"  # Default Indian stock symbol
+SYMBOL = "NATGASMINI26FEBFUT"  # Default Indian stock symbol
 EXCHANGE = "MCX"  # Default exchange (NSE, BSE, MCX, etc.)
 
 def map_interval_to_kite(interval: str) -> str:
@@ -195,8 +196,8 @@ def main():
     # Define parameter ranges
     # short_window_range = [5, 10, 15, 20, 25, 30]
     # long_window_range = [20, 30, 40, 50, 60, 70]
-    SHORT_VAL = 20
-    LONG_VAL = 50
+    SHORT_VAL = 10
+    LONG_VAL = 20
     RANGE = 9
     # Ensure short_window_range max is less than long_window_range min to avoid invalid combinations
     short_start = max(SHORT_VAL - RANGE, 4)

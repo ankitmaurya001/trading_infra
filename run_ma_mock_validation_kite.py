@@ -61,7 +61,7 @@ import config as cfg
 # GLOBAL CONFIGURATION - Edit these values to set defaults
 # ============================================================================
 # You can override these via command-line arguments if needed
-DEFAULT_SYMBOL = "SILVERMIC26FEBFUT"  # Default Indian stock symbol
+DEFAULT_SYMBOL = "NATGASMINI26FEBFUT"  # Default Indian stock symbol
 DEFAULT_EXCHANGE = "MCX"  # Default exchange (NSE, BSE, MCX)
 DAYS_TO_VALIDATE = 30
 # use 30 days ago (Kite uses YYYY-MM-DD format)
@@ -69,14 +69,12 @@ DEFAULT_START_DATE = (datetime.now() - timedelta(days=DAYS_TO_VALIDATE)).strftim
 # use today's date
 DEFAULT_END_DATE = datetime.now().strftime("%Y-%m-%d")
 DEFAULT_INTERVAL = "15m"  # Will be converted to "15minute" for Kite
-DEFAULT_PARAMS = [
-    {"short_window": 21, "long_window": 51, "risk_reward_ratio": 8.5}
-]
+
 DEFAULT_VALIDATION_WINDOW_DAYS = 7  # How often to run validation (every N days)
 
 # Parameter ranges for validation optimization (matching run_ma_optimization_kite.py format)
-VALIDATION_SHORT_VAL = 20  # Center value for short window range
-VALIDATION_LONG_VAL = 50  # Center value for long window range
+VALIDATION_SHORT_VAL = 11  # Center value for short window range
+VALIDATION_LONG_VAL = 20  # Center value for long window range
 VALIDATION_RANGE = 4  # Range around center values
 VALIDATION_SHORT_START = max(VALIDATION_SHORT_VAL - VALIDATION_RANGE, 4)
 VALIDATION_SHORT_END = VALIDATION_SHORT_VAL + VALIDATION_RANGE
@@ -86,6 +84,10 @@ DEFAULT_VALIDATION_SHORT_RANGE = list(range(VALIDATION_SHORT_START, VALIDATION_S
 DEFAULT_VALIDATION_LONG_RANGE = list(range(VALIDATION_LONG_START, VALIDATION_LONG_END + 1))
 DEFAULT_VALIDATION_RR_RANGE = [6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]  # Risk-reward ratios to test
 # ============================================================================
+
+DEFAULT_PARAMS = [
+    {"short_window": VALIDATION_SHORT_VAL, "long_window": VALIDATION_LONG_VAL, "risk_reward_ratio": 9.0}
+]
 
 
 def map_interval_to_kite(interval: str) -> str:

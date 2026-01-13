@@ -13,13 +13,14 @@ import os
 import signal
 import sys
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import logging
 import pytz
 
 from strategy_manager import StrategyManager
 from trading_engine import TradingEngine
 from data_fetcher import KiteDataFetcher
+from brokers import KiteCommodityBroker
 import config as cfg
 
 
@@ -39,6 +40,19 @@ class KiteTradingEngine:
         self.config_file = config_file
         self.config = self._load_config()
         
+        # Trading configuration - MUST be set before broker initialization
+        self.symbol = self.config.get('symbol', 'TATAMOTORS')
+        self.interval = self.config.get('interval', '15minute')
+        self.polling_frequency = self.config.get('polling_frequency', 60)
+        self.session_id = None
+        
+        # Exchange and market hours configuration - MUST be set before broker initialization
+        self.exchange = cfg.KITE_EXCHANGE
+        self.ist_timezone = pytz.timezone('Asia/Kolkata')
+        
+        # Check if live trading is enabled (default: False for safety)
+        self.live_trading = self.config.get('live_trading', False)
+        
         # Initialize components
         self.strategy_manager = StrategyManager()
         self.trading_engine = TradingEngine(
@@ -57,28 +71,33 @@ class KiteTradingEngine:
         self.data_fetcher.authenticate()
         print("✅ Authentication successful!")
         
+        # Initialize Kite Commodity Broker (self.exchange is now defined)
+        self.broker = KiteCommodityBroker(
+            kite=self.data_fetcher.kite,
+            exchange=self.exchange
+        )
+        
+        # Enable broker in trading engine only if live trading is enabled
+        self.trading_engine.broker = self.broker
+        self.trading_engine.use_broker = self.live_trading
+        self.trading_engine.symbol = self.symbol  # self.symbol is now defined
+        
+        # Commodity trading configuration
+        commodity_config = self.config.get('commodity_trading', {})
+        self.margin_buffer_percent = commodity_config.get('margin_buffer_percent', 20)
+        self.margin_check_interval = commodity_config.get('margin_check_interval_seconds', 300)
+        self.margin_alert_threshold = commodity_config.get('margin_alert_threshold_percent', 150)
+        self.margin_critical_threshold = commodity_config.get('margin_critical_threshold_percent', 110)
+        self.use_gtt_for_stop_loss = commodity_config.get('use_gtt_for_stop_loss', True)
+        
+        # Margin monitoring state
+        self.margin_monitor_thread = None
+        self.margin_monitor_running = False
+        
         # Trading state
         self.is_running = False
         self.current_data = pd.DataFrame()
         self.last_update = None
-        
-        # Mock trading settings
-        self.mock_mode = self.config.get('mock_mode', False)
-        self.mock_data = pd.DataFrame()
-        self.mock_current_index = 0
-        self.mock_start_date = None
-        self.mock_end_date = None
-        self.mock_delay = self.config.get('mock_delay', 0.01)
-        
-        # Trading configuration
-        self.symbol = self.config.get('symbol', 'TATAMOTORS')
-        self.interval = self.config.get('interval', '15minute')
-        self.polling_frequency = self.config.get('polling_frequency', 60)
-        self.session_id = None
-        
-        # Exchange and market hours configuration
-        self.exchange = cfg.KITE_EXCHANGE
-        self.ist_timezone = pytz.timezone('Asia/Kolkata')
         
         # Data tracking for efficient processing
         self.last_processed_timestamp = None
@@ -88,8 +107,14 @@ class KiteTradingEngine:
         self.last_auth_error_time = None
         self.auth_error_count = 0
         
-        # Setup logging
+        # Setup logging - MUST be done before using self.logger
         self._setup_logging()
+        
+        # Log trading mode (now self.logger is available)
+        if self.live_trading:
+            self.logger.warning("⚠️  LIVE TRADING ENABLED - Real orders will be placed!")
+        else:
+            self.logger.info("📊 Virtual trading mode - No real orders will be placed")
         
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -107,9 +132,7 @@ class KiteTradingEngine:
                 "initial_balance": 10000,
                 "max_leverage": 10,
                 "max_loss_percent": 2.0,
-                "mock_mode": False,
-                "mock_days_back": 10,
-                "mock_delay": 0.01,
+                "live_trading": False,
                 "enabled_strategies": ["ma", "rsi"],
                 "ma_params": {
                     "short_window": 10,
@@ -159,8 +182,8 @@ class KiteTradingEngine:
         
         # Create session ID for this run using IST timezone
         timestamp = datetime.now(self.ist_timezone).strftime("%Y%m%d_%H%M%S")
-        mode_suffix = "_mock" if self.mock_mode else "_live"
-        self.session_id = f"{self.symbol}_{timestamp}{mode_suffix}"
+        trading_suffix = "_live" if self.live_trading else "_virtual"
+        self.session_id = f"{self.symbol}_{timestamp}{trading_suffix}"
         
         # Create session-specific folder
         self.session_folder = os.path.join(base_log_folder, self.session_id)
@@ -403,30 +426,29 @@ class KiteTradingEngine:
         #     return False
         
         self.is_running = True
-        mock_days_back = self.config.get('mock_days_back', 10)
         
         # Reset data tracking for new session
         self.last_processed_timestamp = None
-        self.last_processed_index = -1
         
-        self.logger.info("🚀 Live trading started!")
+        self.logger.info("🚀 Trading engine started!")
         self.logger.info(f"📊 Symbol: {self.symbol}")
         self.logger.info(f"⏱️  Interval: {self.interval}")
         self.logger.info(f"📡 Polling Frequency: {self.polling_frequency} seconds")
-        self.logger.info(f"🎭 Mode: {'MOCK' if self.mock_mode else 'LIVE'}")
+        if self.live_trading:
+            self.logger.info(f"💰 Trading: LIVE (Real Orders)")
+        else:
+            self.logger.info(f"💰 Trading: VIRTUAL (No Real Orders)")
+            self.logger.info(f"   - Still connects to Kite for data and margin checks")
+            self.logger.info(f"   - Validates margin requirements")
+            self.logger.info(f"   - Tracks PnL internally")
+            self.logger.info(f"   - No orders placed on exchange")
         self.logger.info(f"🎯 Active Strategies: {[s.name for s in self.strategy_manager.get_strategies()]}")
         self.logger.info(f"💰 Initial Balance: ${self.trading_engine.initial_balance:,.2f}")
-        self.logger.info("=" * 60)
         
-        # Setup mock data if in mock mode
-        if self.mock_mode:
-            self._setup_mock_data(mock_days_back)
-            # Check if mock data was successfully loaded
-            if self.mock_data.empty:
-                self.logger.error("❌ Failed to setup mock data. Cannot start mock trading.")
-                self.is_running = False
-                return False
-            self.logger.info(f"✅ Mock data setup successful with {len(self.mock_data)} data points")
+        # Start margin monitoring thread (always for live data)
+        self._start_margin_monitor()
+        
+        self.logger.info("=" * 60)
         
         # Start the trading loop in a separate thread
         trading_thread = threading.Thread(
@@ -440,6 +462,10 @@ class KiteTradingEngine:
     def stop_trading(self):
         """Stop the trading engine."""
         self.is_running = False
+        
+        # Stop margin monitoring
+        self._stop_margin_monitor()
+        
         self.logger.info("🛑 Live trading stopped.")
         
         status = self.trading_engine.get_current_status()
@@ -448,62 +474,10 @@ class KiteTradingEngine:
         self.logger.info(f"📋 Total Trades: {status['total_trades']}")
         self.logger.info("=" * 60)
     
-    def _setup_mock_data(self, mock_days_back: int):
-        """Setup mock data for testing."""
-        self.logger.info(f"🎭 Setting up mock data for {self.symbol}...")
-        
-        # Calculate date range using IST timezone consistently
-        ist_now = datetime.now(self.ist_timezone)
-        end_date = (ist_now + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
-        
-        if self.interval in ["5minute", "15minute", "30minute", "1hour"]:
-            start_date = (ist_now - timedelta(days=60)).strftime('%Y-%m-%d %H:%M:%S')
-        else:
-            start_date = (ist_now - timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S')
-        
-        self.logger.info(f"📥 Fetching historical data from {start_date} to {end_date}")
-        
-        # Fetch all historical data
-        data = self.data_fetcher.fetch_historical_data(
-            self.symbol, start_date, end_date, interval=self.interval
-        )
-        
-        if data.empty:
-            self.logger.error(f"❌ No data fetched for {self.symbol}")
-            return
-        
-        self.logger.info(f"✅ Fetched {len(data)} data points")
-        
-        # Calculate the mock start point
-        if self.interval in ["5minute", "15minute", "30minute", "1hour"]:
-            points_per_day = {
-                "5minute": 288,   # 24 * 12
-                "15minute": 96,   # 24 * 4
-                "30minute": 48,   # 24 * 2
-                "1hour": 24     # 24 * 1
-            }
-            mock_points_back = mock_days_back * points_per_day.get(self.interval, 96)
-            self.mock_current_index = max(0, len(data) - mock_points_back)
-        else:
-            self.mock_current_index = max(0, len(data) - mock_days_back)
-        
-        # Store the mock data
-        self.mock_data = data
-        self.mock_start_date = data.index[self.mock_current_index]
-        self.mock_end_date = data.index[-1]
-        
-        self.logger.info(f"🎭 Mock simulation will start from: {self.mock_start_date}")
-        self.logger.info(f"🎭 Mock simulation will end at: {self.mock_end_date}")
-        self.logger.info(f"🎭 Total mock data points: {len(data) - self.mock_current_index}")
-    
     def _trading_loop(self):
         """Main trading loop that runs in a separate thread."""
-        self.logger.info(f"🚀 Starting {'mock' if self.mock_mode else 'live'} trading loop for {self.symbol}")
-        
-        if self.mock_mode:
-            self._mock_trading_loop()
-        else:
-            self._live_trading_loop()
+        self.logger.info(f"🚀 Starting live trading loop for {self.symbol}")
+        self._live_trading_loop()
     
     def _live_trading_loop(self):
         """Live trading loop that fetches real-time data."""
@@ -591,9 +565,16 @@ class KiteTradingEngine:
                         self.current_data = data
                         self.last_update = current_time
                         
+                        # Sync positions with broker to detect if GTT stop-loss orders were triggered
+                        if self.live_trading:
+                            self._sync_positions_with_broker(current_time)
+                        
                         # Process each strategy only when new data is available
                         for strategy in self.strategy_manager.get_strategies():
                             self.trading_engine.process_strategy_signals(strategy, data, current_time)
+                        
+                        # Check take-profit for open positions (after strategy processing)
+                        self._check_take_profit(data, current_time)
                         
                         # Update the last processed timestamp
                         self.last_processed_timestamp = latest_data_timestamp
@@ -630,63 +611,6 @@ class KiteTradingEngine:
                 
                 # Wait before retrying
                 time.sleep(min(60, self.polling_frequency))
-    
-    def _mock_trading_loop(self):
-        """Mock trading loop that processes historical data sequentially."""
-        self.logger.info(f"🎭 Starting mock trading simulation...")
-        
-        start_time = time.time()
-        
-        while self.is_running and self.mock_current_index < len(self.mock_data):
-            try:
-                # Check if we have a new data point to process
-                if self.mock_current_index > self.last_processed_index:
-                    # Get current data point
-                    current_data_point = self.mock_data.iloc[self.mock_current_index]
-                    current_time = current_data_point.name
-                    
-                    # Create data up to current point for strategy processing
-                    data = self.mock_data.iloc[:self.mock_current_index + 1]
-                    
-                    # Calculate progress
-                    progress = (self.mock_current_index / len(self.mock_data)) * 100
-                    self.logger.info(f"🎭 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Processing mock data point {self.mock_current_index + 1}/{len(self.mock_data)} ({progress:.1f}%)")
-                    
-                    # Save only the new data point to CSV
-                    new_data_point = pd.DataFrame([current_data_point])
-                    self.trading_engine.save_data_to_csv(new_data_point, current_time)
-                    
-                    self.current_data = data
-                    self.last_update = current_time
-                    
-                    # Process each strategy only for new data
-                    for strategy in self.strategy_manager.get_strategies():
-                        self.trading_engine.process_strategy_signals(strategy, data, current_time)
-                    
-                    # Update the last processed index
-                    self.last_processed_index = self.mock_current_index
-                    
-                    # Save current status to file
-                    self._save_status_to_file()
-                
-                # Move to next data point
-                self.mock_current_index += 1
-                
-                # Use configurable delay in mock mode
-                # time.sleep(self.mock_delay)
-                
-            except Exception as e:
-                self.logger.error(f"❌ Error in mock trading loop: {str(e)}")
-                time.sleep(0.1)
-        
-        end_time = time.time()
-        simulation_duration = end_time - start_time
-        
-        if self.mock_current_index >= len(self.mock_data):
-            self.logger.info(f"🎭 Mock trading simulation completed!")
-            self.logger.info(f"📊 Processed all {len(self.mock_data)} data points")
-            self.logger.info(f"⏱️  Simulation duration: {simulation_duration:.2f} seconds")
-            self.is_running = False
     
     def _calculate_dynamic_polling_frequency(self) -> int:
         """Calculate dynamic polling frequency based on time until next tick."""
@@ -728,6 +652,282 @@ class KiteTradingEngine:
             self.logger.warning(f"Error calculating dynamic polling frequency: {e}")
             return self.polling_frequency
     
+    def _check_take_profit(self, data: pd.DataFrame, current_time: datetime):
+        """
+        Check take-profit levels for open positions when new candle closes.
+        
+        Args:
+            data: Latest market data
+            current_time: Current timestamp
+        """
+        if data.empty:
+            return
+        
+        # Get current price from latest candle close
+        current_price = float(data['Close'].iloc[-1])
+        
+        # Check all open positions
+        for trade in self.trading_engine.active_trades[:]:  # Copy list to avoid modification during iteration
+            if trade.get('status') != 'open':
+                continue
+            
+            take_profit = trade.get('take_profit')
+            if take_profit is None:
+                continue
+            
+            # Determine position type
+            is_long = trade.get('action') == 'BUY'
+            
+            # Check if take-profit is hit
+            take_profit_hit = False
+            if is_long:
+                # LONG position: take-profit hit if current_price >= take_profit
+                take_profit_hit = current_price >= take_profit
+            else:
+                # SHORT position: take-profit hit if current_price <= take_profit
+                take_profit_hit = current_price <= take_profit
+            
+            if take_profit_hit:
+                self.logger.info(f"🎯 Take-profit hit for trade {trade['id']}: {trade['action']} @ {current_price:.2f} (target: {take_profit:.2f})")
+                
+                # Close the position - pass exit_type='tp_hit' to ensure GTT is cancelled
+                position_type = 'LONG' if is_long else 'SHORT'
+                closed_trades = self.trading_engine.close_trades(
+                    strategy=self.strategy_manager.get_strategy_by_name(trade['strategy']),
+                    position_type=position_type,
+                    price=current_price,
+                    timestamp=current_time,
+                    exit_type='tp_hit'  # Explicitly pass exit type
+                )
+                
+                if closed_trades:
+                    self.logger.info(f"✅ Position closed (TP hit): {closed_trades[0].get('status', 'closed')}")
+    
+    def _sync_positions_with_broker(self, current_time: datetime):
+        """
+        Sync positions with broker to detect if any GTT stop-loss orders were triggered.
+        This handles the case where the exchange closes a position via GTT while the engine wasn't monitoring.
+        
+        Args:
+            current_time: Current timestamp
+        """
+        if not self.live_trading or not self.broker:
+            return
+        
+        try:
+            # Get current positions from broker
+            broker_positions = self.broker.get_positions()
+            
+            # Create a map of broker positions by symbol
+            broker_position_map = {}
+            for pos in broker_positions:
+                symbol = pos.get('tradingsymbol')
+                qty = pos.get('quantity', 0)
+                if symbol:
+                    broker_position_map[symbol] = qty
+            
+            # Check if any active trades no longer have a corresponding broker position
+            for trade in self.trading_engine.active_trades[:]:
+                if trade.get('status') != 'open':
+                    continue
+                
+                # Check if we have a broker order for this trade
+                if not trade.get('broker_order_id'):
+                    continue
+                
+                # Get broker position for this symbol
+                broker_qty = broker_position_map.get(self.symbol, 0)
+                
+                # Determine if position should exist
+                expected_qty = 1 if trade.get('action') == 'BUY' else -1  # 1 lot for LONG, -1 for SHORT
+                
+                # Check if GTT might have triggered (position closed but we think it's open)
+                if broker_qty == 0:
+                    # Position was closed on broker side (likely GTT triggered)
+                    self.logger.warning(f"🔔 Detected position closed by broker (likely GTT triggered): Trade {trade['id']}")
+                    
+                    # Get current price to calculate PnL
+                    try:
+                        current_price = self.broker.get_price(self.symbol)
+                    except:
+                        current_price = trade.get('stop_loss', trade.get('entry_price'))
+                    
+                    # Close the trade internally with sl_hit status
+                    strategy = self.strategy_manager.get_strategy_by_name(trade['strategy'])
+                    if strategy:
+                        position_type = 'LONG' if trade.get('action') == 'BUY' else 'SHORT'
+                        closed_trades = self.trading_engine.close_trades(
+                            strategy=strategy,
+                            position_type=position_type,
+                            price=current_price,
+                            timestamp=current_time,
+                            exit_type='sl_hit'  # Assume GTT stop-loss triggered
+                        )
+                        if closed_trades:
+                            self.logger.info(f"✅ Trade {trade['id']} marked as closed (GTT stop-loss triggered)")
+                elif (trade.get('action') == 'BUY' and broker_qty < 0) or \
+                     (trade.get('action') == 'SELL' and broker_qty > 0):
+                    # Position direction mismatch - something's wrong
+                    self.logger.error(f"⚠️  Position direction mismatch for trade {trade['id']}! "
+                                     f"Expected: {expected_qty}, Broker: {broker_qty}")
+                    
+        except Exception as e:
+            self.logger.warning(f"⚠️  Failed to sync positions with broker: {e}")
+    
+    def _check_margin_before_order(self, required_margin: float) -> Tuple[bool, str]:
+        """
+        Check if sufficient margin is available before placing an order.
+        
+        Args:
+            required_margin: Required margin amount
+            
+        Returns:
+            Tuple of (is_sufficient, message)
+        """
+        try:
+            margins = self.broker.check_margins()
+            available_margin = margins.get('available', 0.0)
+            
+            # Add buffer
+            required_with_buffer = required_margin * (1 + self.margin_buffer_percent / 100)
+            
+            if available_margin >= required_with_buffer:
+                return True, f"Sufficient margin: {available_margin:.2f} >= {required_with_buffer:.2f}"
+            else:
+                return False, f"Insufficient margin: {available_margin:.2f} < {required_with_buffer:.2f} (required: {required_margin:.2f})"
+                
+        except Exception as e:
+            self.logger.error(f"Error checking margin: {e}")
+            return False, f"Error checking margin: {e}"
+    
+    def _margin_monitor_loop(self):
+        """
+        Background thread that continuously monitors margin requirements.
+        Alerts if margin falls below threshold and exits if critically low.
+        """
+        self.logger.info("💰 Margin monitoring thread started")
+        
+        while self.margin_monitor_running and self.is_running:
+            try:
+                # Check if we have open positions
+                if not self.trading_engine.active_trades:
+                    time.sleep(self.margin_check_interval)
+                    continue
+                
+                # Get current margin status
+                margins = self.broker.check_margins()
+                available_margin = margins.get('available', 0.0)
+                
+                # Calculate total margin required for all open positions
+                # Use actual order_margins API to get real margin requirements
+                total_required_margin = 0.0
+                for trade in self.trading_engine.active_trades:
+                    if trade.get('status') == 'open':
+                        try:
+                            current_price = self.broker.get_price(self.symbol)
+                            if current_price > 0:
+                                # Get actual margin requirement using order_margins API
+                                transaction_type = 'BUY' if trade.get('action') == 'BUY' else 'SELL'
+                                order_margins = self.broker.get_order_margins(
+                                    symbol=self.symbol,
+                                    transaction_type=transaction_type,
+                                    quantity=1,  # 1 lot
+                                    price=current_price,
+                                    order_type='MARKET'
+                                )
+                                actual_margin = order_margins.get('total', 0.0)
+                                if actual_margin > 0:
+                                    total_required_margin += actual_margin
+                                else:
+                                    # Fallback to estimated calculation if API fails
+                                    position_size = trade.get('position_size', 0)
+                                    leverage = trade.get('leverage', 1.0)
+                                    margin_required = position_size / leverage if leverage > 0 else position_size
+                                    total_required_margin += margin_required
+                                    self.logger.warning(f"Could not get actual margin for trade {trade.get('id')}, using estimate")
+                        except Exception as e:
+                            self.logger.warning(f"Error calculating margin for trade {trade.get('id')}: {e}")
+                
+                if total_required_margin > 0:
+                    # Calculate margin ratio
+                    margin_ratio = (available_margin / total_required_margin) * 100
+                    
+                    # Check thresholds
+                    if margin_ratio < self.margin_critical_threshold:
+                        # Critically low
+                        if self.live_trading:
+                            # Exit positions only in live trading mode
+                            self.logger.error(f"🚨 CRITICAL: Margin critically low ({margin_ratio:.1f}% of required). Exiting positions!")
+                            self._exit_all_positions("margin_critical")
+                        else:
+                            # In virtual mode, just warn
+                            self.logger.warning(f"🚨 CRITICAL: Margin would be critically low ({margin_ratio:.1f}% of required) - Would exit in live mode")
+                    elif margin_ratio < self.margin_alert_threshold:
+                        # Below alert threshold - log warning
+                        self.logger.warning(f"⚠️  Margin below alert threshold: {margin_ratio:.1f}% of required (available: {available_margin:.2f}, required: {total_required_margin:.2f})")
+                    else:
+                        self.logger.debug(f"💰 Margin OK: {margin_ratio:.1f}% of required (available: {available_margin:.2f}, required: {total_required_margin:.2f})")
+                
+                # Sleep until next check
+                time.sleep(self.margin_check_interval)
+                
+            except Exception as e:
+                self.logger.error(f"Error in margin monitor loop: {e}")
+                time.sleep(self.margin_check_interval)
+        
+        self.logger.info("💰 Margin monitoring thread stopped")
+    
+    def _exit_all_positions(self, reason: str):
+        """
+        Exit all open positions.
+        
+        Args:
+            reason: Reason for exit (e.g., 'margin_critical')
+        """
+        self.logger.warning(f"🛑 Exiting all positions. Reason: {reason}")
+        
+        try:
+            # Get current price
+            current_price = self.broker.get_price(self.symbol)
+            if current_price <= 0:
+                self.logger.error("Cannot get current price for exit")
+                return
+            
+            current_time = datetime.now(self.ist_timezone)
+            
+            # Close all open trades
+            for trade in self.trading_engine.active_trades[:]:
+                if trade.get('status') == 'open':
+                    position_type = 'LONG' if trade.get('action') == 'BUY' else 'SHORT'
+                    strategy = self.strategy_manager.get_strategy_by_name(trade['strategy'])
+                    if strategy:
+                        self.trading_engine.close_trades(
+                            strategy=strategy,
+                            position_type=position_type,
+                            price=current_price,
+                            timestamp=current_time,
+                            exit_type=reason  # Pass the exit reason (e.g., 'margin_critical')
+                        )
+        except Exception as e:
+            self.logger.error(f"Error exiting positions: {e}")
+    
+    def _start_margin_monitor(self):
+        """Start the margin monitoring thread."""
+        if not self.margin_monitor_running:
+            self.margin_monitor_running = True
+            self.margin_monitor_thread = threading.Thread(
+                target=self._margin_monitor_loop,
+                daemon=True
+            )
+            self.margin_monitor_thread.start()
+            self.logger.info("💰 Margin monitoring thread started")
+    
+    def _stop_margin_monitor(self):
+        """Stop the margin monitoring thread."""
+        if self.margin_monitor_running:
+            self.margin_monitor_running = False
+            self.logger.info("💰 Margin monitoring thread stopped")
+    
     def _save_status_to_file(self):
         """Save current trading status to JSON file for UI consumption."""
         try:
@@ -737,13 +937,7 @@ class KiteTradingEngine:
             status['session_id'] = self.session_id
             status['symbol'] = self.symbol
             status['interval'] = self.interval
-            status['mock_mode'] = self.mock_mode
-            
-            # Add mock progress if in mock mode
-            if self.mock_mode and not self.mock_data.empty:
-                status['mock_progress'] = (self.mock_current_index / len(self.mock_data)) * 100
-                status['mock_total_points'] = len(self.mock_data)
-                status['mock_current_point'] = self.mock_current_index
+            status['live_trading'] = self.live_trading
             
             # Save to status file in session folder
             status_file = os.path.join(self.session_folder, "status.json")
