@@ -66,7 +66,14 @@ class TradingDashboard:
                     start_time = status_data.get('last_update', 'unknown')
                     is_running = status_data.get('is_running', False)
                     mock_mode = status_data.get('mock_mode', False)
+                    
+                    # Handle execution_mode - check both Binance and Kite formats
                     execution_mode = status_data.get('execution_mode', 'unknown')
+                    
+                    # For Kite, derive execution_mode from live_trading flag
+                    live_trading = status_data.get('live_trading', None)
+                    if live_trading is not None and execution_mode == 'unknown':
+                        execution_mode = 'kite_live' if live_trading else 'kite_virtual'
                     
                     # Get folder modification time as fallback
                     folder_mtime = datetime.fromtimestamp(os.path.getmtime(os.path.join(self.log_folder, session_folder)))
@@ -938,6 +945,12 @@ def main():
             elif exec_mode == 'binance_live':
                 mode_icon = "⚡📡"
                 mode_label = "Live"
+            elif exec_mode == 'kite_live':
+                mode_icon = "⚡🇮🇳"
+                mode_label = "Kite Live"
+            elif exec_mode == 'kite_virtual':
+                mode_icon = "🧪🇮🇳"
+                mode_label = "Kite Virtual"
             else:
                 mode_icon = "❓"
                 mode_label = exec_mode
@@ -1011,7 +1024,7 @@ def main():
     with col1:
         st.metric("Symbol", selected_session['symbol'])
     with col2:
-        st.metric("Status", "🟢 Live" if selected_session['is_running'] else "🔴 Stopped")
+        st.metric("Status", "🟢 Running" if selected_session['is_running'] else "🔴 Stopped")
     with col3:
         exec_mode = selected_session.get('execution_mode', 'unknown')
         if exec_mode == 'mock':
@@ -1022,6 +1035,10 @@ def main():
             st.metric("Mode", "🧪📡 Testnet")
         elif exec_mode == 'binance_live':
             st.metric("Mode", "⚡📡 Live")
+        elif exec_mode == 'kite_live':
+            st.metric("Mode", "⚡🇮🇳 Kite Live")
+        elif exec_mode == 'kite_virtual':
+            st.metric("Mode", "🧪🇮🇳 Kite Virtual")
         else:
             st.metric("Mode", f"❓ {exec_mode}")
     with col4:
