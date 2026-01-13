@@ -140,13 +140,9 @@ class KiteDataFetcher:
             cached_token = self._load_cached_token()
             if cached_token:
                 self.kite.set_access_token(cached_token)
-                # Verify token is still valid
-                if self._is_token_valid():
-                    print(f"[INFO] Using cached access token from {self.token_cache_file}")
-                    self._load_instruments()
-                else:
-                    print(f"[INFO] Cached token expired or invalid, will authenticate...")
-                    self.kite._access_token = None  # Clear invalid token
+                # Note: We don't validate here - validation happens in authenticate()
+                # This avoids double API calls
+                print(f"[INFO] Loaded cached access token from {self.token_cache_file}")
 
 
     def authenticate(self):
@@ -155,11 +151,16 @@ class KiteDataFetcher:
         If access token is already set and valid, this method does nothing.
         Otherwise, performs full authentication and caches the token.
         """
-        # Check if we already have a valid token
-        if hasattr(self.kite, '_access_token') and self.kite._access_token:
+        # Check if we already have a valid token (try multiple attribute names)
+        access_token = getattr(self.kite, 'access_token', None) or getattr(self.kite, '_access_token', None)
+        
+        if access_token:
+            # Token is set, verify it's still valid
             if self._is_token_valid():
-                print("[INFO] Already authenticated with valid token, skipping authentication...")
+                print("[INFO] ✅ Already authenticated with valid token, skipping re-authentication...")
                 return
+            else:
+                print("[INFO] ⚠️  Cached token is invalid/expired, performing full authentication...")
         
         session = requests.Session()
         # Step 1: Get login URL
