@@ -53,14 +53,7 @@ class KiteTradingEngine:
         # Check if live trading is enabled (default: False for safety)
         self.live_trading = self.config.get('live_trading', False)
         
-        # Initialize components
-        self.strategy_manager = StrategyManager()
-        self.trading_engine = TradingEngine(
-            initial_balance=self.config.get('initial_balance', 10000),
-            max_leverage=self.config.get('max_leverage', 10.0),
-            max_loss_percent=self.config.get('max_loss_percent', 2.0)
-        )
-
+        # Initialize data fetcher and authenticate first (needed for margin check)
         self.data_fetcher = KiteDataFetcher(
             cfg.KITE_CREDENTIALS, 
             cfg.KITE_EXCHANGE
@@ -76,6 +69,39 @@ class KiteTradingEngine:
             kite=self.data_fetcher.kite,
             exchange=self.exchange
         )
+        
+        # Fetch actual available margin from Kite
+        config_balance = self.config.get('initial_balance', None)
+        actual_balance = self._fetch_actual_balance()
+        
+        # Determine initial balance:
+        # - If config has a value, use minimum of config and actual (for risk limiting)
+        # - If config is None or 0, use actual balance
+        if config_balance and config_balance > 0:
+            initial_balance = min(config_balance, actual_balance) if actual_balance > 0 else config_balance
+            if actual_balance > 0 and config_balance < actual_balance:
+                print(f"💰 Using configured balance limit: ₹{initial_balance:,.2f} (actual available: ₹{actual_balance:,.2f})")
+            elif actual_balance > 0:
+                print(f"💰 Using actual available balance: ₹{initial_balance:,.2f} (config limit: ₹{config_balance:,.2f})")
+        else:
+            initial_balance = actual_balance if actual_balance > 0 else 10000
+            print(f"💰 Using actual available balance: ₹{initial_balance:,.2f}")
+        
+        # Get margin required for 1 lot (this is the actual capital at risk per trade)
+        self.lot_margin = self._fetch_lot_margin()
+        if self.lot_margin > 0:
+            print(f"📊 Margin per lot ({self.symbol}): ₹{self.lot_margin:,.2f}")
+        
+        # Initialize components with actual balance
+        self.strategy_manager = StrategyManager()
+        self.trading_engine = TradingEngine(
+            initial_balance=initial_balance,
+            max_leverage=self.config.get('max_leverage', 10.0),
+            max_loss_percent=self.config.get('max_loss_percent', 2.0)
+        )
+        
+        # Store lot margin in trading engine for proper position sizing
+        self.trading_engine.lot_margin = self.lot_margin if self.lot_margin > 0 else None
         
         # Enable broker in trading engine only if live trading is enabled
         self.trading_engine.broker = self.broker
@@ -119,6 +145,76 @@ class KiteTradingEngine:
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
+    
+    def _fetch_actual_balance(self) -> float:
+        """
+        Fetch actual available balance from Kite.
+        Uses single ledger facility (equity funds available for commodity trading).
+        
+        Returns:
+            float: Available margin in INR, or 0 if unable to fetch
+        """
+        try:
+            margins = self.broker.check_margins()
+            available = margins.get('available', 0.0)
+            
+            if available > 0:
+                return available
+            
+            # If commodity margin is 0, check equity (single ledger)
+            try:
+                all_margins = self.broker.kite.margins()
+                equity_margin = all_margins.get('equity', {})
+                
+                # Try different fields for available balance
+                equity_available = equity_margin.get('available', {})
+                if isinstance(equity_available, dict):
+                    available = equity_available.get('live_balance', 0) or equity_available.get('cash', 0) or equity_available.get('opening_balance', 0)
+                else:
+                    available = equity_available
+                
+                if available == 0:
+                    available = equity_margin.get('net', 0)
+                
+                return float(available)
+            except Exception as e:
+                print(f"⚠️ Could not fetch equity margin: {e}")
+                return 0.0
+                
+        except Exception as e:
+            print(f"⚠️ Could not fetch balance from Kite: {e}")
+            return 0.0
+    
+    def _fetch_lot_margin(self) -> float:
+        """
+        Fetch margin required for 1 lot of the current symbol.
+        This represents the actual capital at risk per trade.
+        
+        Returns:
+            float: Margin required for 1 lot in INR, or 0 if unable to fetch
+        """
+        try:
+            # Get current price for margin calculation
+            current_price = self.broker.get_price(self.symbol)
+            
+            if current_price <= 0:
+                print(f"⚠️ Could not get price for {self.symbol}")
+                return 0.0
+            
+            # Get actual margin requirement using order_margins API
+            order_margins = self.broker.get_order_margins(
+                symbol=self.symbol,
+                transaction_type='BUY',
+                quantity=1,  # 1 lot
+                price=current_price,
+                order_type='MARKET'
+            )
+            
+            return order_margins.get('total', 0.0)
+            
+        except Exception as e:
+            print(f"⚠️ Could not fetch lot margin: {e}")
+            return 0.0
     
     def _load_config(self) -> Dict:
         """Load configuration from JSON file."""

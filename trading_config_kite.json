@@ -1,21 +1,17 @@
 {
-    "symbol": "GOLD25DECFUT",
+    "symbol": "NATGASMINI26FEBFUT",
     "interval": "15minute",
     "polling_frequency": 60,
-    "initial_balance": 10000,
+    "initial_balance": null,
     "max_leverage": 10,
     "max_loss_percent": 2.0,
-    "trading_mode": "testnet",
-    "binance_api_key": "",
-    "binance_api_secret": "",
+    "live_trading": false,
     "risk": {
         "max_order_notional": 10000.0,
         "max_daily_notional": 1000000.0,
         "max_open_orders": 1,
         "enable_kill_switch": true
     },
-    "mock_days_back": 10,
-    "mock_delay": 0,
     "enabled_strategies": [
         "ma"
     ],

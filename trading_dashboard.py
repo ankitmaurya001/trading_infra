@@ -276,8 +276,9 @@ class TradingDashboard:
                 'entry_time': entry_record['timestamp'],
                 'entry_price': entry_record['price'],
                 'quantity': entry_record['quantity'],
-                'leverage': entry_record.get('leverage', 1.0),
+                'leverage': entry_record.get('effective_leverage', entry_record.get('leverage', 1.0)),
                 'position_size': entry_record.get('position_size', entry_record['quantity'] * entry_record['price']),
+                'margin_used': entry_record.get('margin_used', None),
                 'atr': entry_record.get('atr', 0.0),
                 'exit_time': exit_record['timestamp'],
                 'exit_price': exit_record['price'],
@@ -665,10 +666,19 @@ class TradingDashboard:
             display_df['price_change_pct'] = ((display_df['exit_price'] - display_df['entry_price']) / display_df['entry_price'] * 100).round(2)
             
             # Select and reorder columns for display
+            # Calculate margin_used if not present (fallback for older trades)
+            if 'margin_used' not in display_df.columns or display_df['margin_used'].isna().all():
+                display_df['margin_used'] = display_df['position_size'] / display_df['leverage']
+            else:
+                # Fill missing values with calculated margin
+                display_df['margin_used'] = display_df['margin_used'].fillna(
+                    display_df['position_size'] / display_df['leverage']
+                )
+            
             display_columns = [
                 'trade_id', 'direction', 'strategy', 'entry_time', 'exit_time',
                 'entry_price', 'exit_price', 'price_change', 'price_change_pct',
-                'quantity', 'leverage', 'position_size', 'atr', 'pnl', 'pnl_pct', 'exit_status'
+                'quantity', 'leverage', 'margin_used', 'pnl', 'pnl_pct', 'exit_status'
             ]
             
             display_df = display_df[display_columns]
@@ -677,7 +687,7 @@ class TradingDashboard:
             display_df.columns = [
                 'Trade ID', 'Direction', 'Strategy', 'Entry Time', 'Exit Time',
                 'Entry Price', 'Exit Price', 'Price Change', 'Price Change %',
-                'Quantity', 'Leverage', 'Position Size', 'ATR', 'PnL', 'PnL %', 'Exit Status'
+                'Quantity', 'Leverage', 'Margin Used', 'PnL', 'PnL %', 'Exit Status'
             ]
             
             # Color code PnL
@@ -1573,10 +1583,11 @@ def main():
                     with col3:
                         st.write(f"{trade['pnl']:.2%}")
                     with col4:
-                        # Show leverage and position size
+                        # Show leverage and margin used
                         leverage = trade.get('leverage', 1.0)
                         position_size = trade.get('position_size', trade['quantity'] * trade['entry_price'])
-                        st.write(f"{leverage:.1f}x (${position_size:.0f})")
+                        margin_used = trade.get('margin_used', position_size / leverage if leverage > 0 else position_size)
+                        st.write(f"{leverage:.1f}x (₹{margin_used:,.0f})")
                     with col5:
                         # Format times
                         entry_time = pd.to_datetime(trade['entry_time'])
@@ -1590,9 +1601,9 @@ def main():
                         # So dollar PnL should be: pnl_percentage × margin_used
                         leverage = trade.get('leverage', 1.0)
                         position_size = trade.get('position_size', trade['quantity'] * trade['entry_price'])
-                        margin_used = position_size / leverage
+                        margin_used = trade.get('margin_used', position_size / leverage if leverage > 0 else position_size)
                         dollar_pnl = trade['pnl'] * margin_used
-                        st.write(f"{trade_color} ${dollar_pnl:.2f}")
+                        st.write(f"{trade_color} ₹{dollar_pnl:,.2f}")
         else:
             st.info("No closed trades yet. Performance metrics will appear here once trades are executed.")
     else:

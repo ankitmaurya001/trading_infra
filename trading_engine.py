@@ -210,6 +210,7 @@ class TradingEngine:
         
         # Margin check for Kite broker (lot-based trading)
         # Check margin even in virtual mode to validate trades would be possible
+        actual_lot_margin = None  # Will store actual margin for Kite trades
         if self.broker and hasattr(self.broker, 'get_order_margins'):
             try:
                 # Use Kite's order_margins API to get ACTUAL margin requirement
@@ -224,19 +225,20 @@ class TradingEngine:
                     order_type='MARKET'
                 )
                 
-                actual_margin_required = order_margins.get('total', 0.0)
+                actual_lot_margin = order_margins.get('total', 0.0)
                 
-                if actual_margin_required == 0.0:
+                if actual_lot_margin == 0.0:
                     print(f"⚠️  Could not get actual margin requirement. Proceeding with trade...")
+                    actual_lot_margin = None
                 else:
                     # Check margin with buffer
                     margins = self.broker.check_margins()
                     available_margin = margins.get('available', 0.0)
                     margin_buffer_percent = 20  # Default 20% buffer
-                    required_with_buffer = actual_margin_required * (1 + margin_buffer_percent / 100)
+                    required_with_buffer = actual_lot_margin * (1 + margin_buffer_percent / 100)
                     
                     if available_margin < required_with_buffer:
-                        reason = f"Insufficient margin: {available_margin:.2f} < {required_with_buffer:.2f} (required: {actual_margin_required:.2f})"
+                        reason = f"Insufficient margin: {available_margin:.2f} < {required_with_buffer:.2f} (required: {actual_lot_margin:.2f})"
                         print(f"⛔ Trade rejected: {reason}")
                         rejection = {
                             'id': len(self.trade_history) + 1,
@@ -256,14 +258,58 @@ class TradingEngine:
                         self._log_trade(rejection, price, timestamp)
                         return rejection
                     else:
-                        print(f"✅ Margin check passed: {available_margin:.2f} >= {required_with_buffer:.2f} (actual margin: {actual_margin_required:.2f})")
+                        print(f"✅ Margin check passed: {available_margin:.2f} >= {required_with_buffer:.2f} (actual margin: {actual_lot_margin:.2f})")
             except Exception as e:
                 print(f"⚠️  Margin check failed: {e}. Proceeding with trade...")
                 import traceback
                 traceback.print_exc()
 
-        # Calculate stop loss and take profit levels
+        # Calculate stop loss and take profit levels (ATR-based)
         take_profit, stop_loss = strategy.calculate_trade_levels(price, position_type, current_atr)
+        
+        # For Kite commodity trading, cap the stop loss to ensure max loss doesn't exceed max_loss_percent
+        is_kite_broker = hasattr(self.broker, 'place_gtt_order') if self.broker else False
+        
+        if is_kite_broker and actual_lot_margin and actual_lot_margin > 0:
+            try:
+                lot_info = self.broker.get_symbol_filters(self.symbol)
+                lot_size = lot_info.get('lot_size', 1)
+                
+                # Calculate potential loss with ATR-based stop loss
+                atr_price_move = abs(price - stop_loss)
+                atr_loss_rupees = lot_size * atr_price_move
+                atr_loss_percent = (atr_loss_rupees / actual_lot_margin) * 100
+                
+                # Calculate max allowed loss
+                max_loss_rupees = actual_lot_margin * (self.max_loss_percent / 100.0)
+                max_price_move = max_loss_rupees / lot_size if lot_size > 0 else atr_price_move
+                
+                # Cap the stop loss if ATR-based loss exceeds max_loss_percent
+                sl_capped = False
+                if atr_loss_rupees > max_loss_rupees:
+                    sl_capped = True
+                    if position_type.name == 'LONG':
+                        stop_loss = price - max_price_move
+                    else:  # SHORT
+                        stop_loss = price + max_price_move
+                
+                # Log SL/TP levels
+                actual_price_move = abs(price - stop_loss)
+                actual_loss_rupees = lot_size * actual_price_move
+                actual_loss_percent = (actual_loss_rupees / actual_lot_margin) * 100
+                
+                tp_price_move = abs(take_profit - price)
+                tp_profit_rupees = lot_size * tp_price_move
+                tp_profit_percent = (tp_profit_rupees / actual_lot_margin) * 100
+                
+                print(f"📊 ATR-based SL/TP (Lot size: {lot_size}, ATR: ₹{current_atr:.2f})")
+                if sl_capped:
+                    print(f"   ⚠️ Stop Loss CAPPED: ATR-based loss ({atr_loss_percent:.1f}%) exceeded max ({self.max_loss_percent}%)")
+                print(f"   Stop Loss: ₹{stop_loss:.2f} (loss: ₹{actual_loss_rupees:.2f} = {actual_loss_percent:.1f}% of margin)")
+                print(f"   Take Profit: ₹{take_profit:.2f} (profit: ₹{tp_profit_rupees:.2f} = {tp_profit_percent:.1f}% of margin)")
+                
+            except Exception as e:
+                print(f"⚠️  Could not validate SL/TP: {e}. Using ATR-based levels.")
         
         # Try external broker execution if configured
         broker_order = None
@@ -358,9 +404,25 @@ class TradingEngine:
         }
         
         # Update balance (subtract the margin requirement, not the full position size)
-        # Margin = position_size / leverage
-        margin_required = position_size / leverage
+        # For Kite commodity trading, use actual lot margin from API
+        # For other brokers, use calculated margin = position_size / leverage
+        is_kite_broker = hasattr(self.broker, 'place_gtt_order') if self.broker else False
+        
+        if is_kite_broker and actual_lot_margin and actual_lot_margin > 0:
+            # Use actual margin from Kite API for commodity trading
+            margin_required = actual_lot_margin
+            # Recalculate effective leverage based on actual margin
+            effective_leverage = position_size / margin_required if margin_required > 0 else leverage
+        else:
+            # Standard margin calculation for other brokers
+            margin_required = position_size / leverage
+            effective_leverage = leverage
+        
         self.current_balance -= margin_required
+        
+        # Store actual margin used in trade record for proper PnL calculation
+        trade['margin_used'] = margin_required
+        trade['effective_leverage'] = effective_leverage
         
         # Add to active trades
         self.active_trades.append(trade)
@@ -371,7 +433,7 @@ class TradingEngine:
         
         # Print trade execution log
         print(f"🔄 [{timestamp.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - {action} {quantity:.4f} {self.symbol} @ ${price:.2f}")
-        print(f"💰 Position Size: ${position_size:.2f} (Leverage: {leverage:.1f}x), Margin: ${margin_required:.2f}, New Balance: ${self.current_balance:.2f}")
+        print(f"💰 Position Size: ${position_size:.2f} (Leverage: {effective_leverage:.1f}x), Margin: ${margin_required:.2f}, New Balance: ${self.current_balance:.2f}")
         print(f"📊 ATR: ${current_atr:.2f}, Max Loss: {self.max_loss_percent}%")
         
         return trade
@@ -398,7 +460,7 @@ class TradingEngine:
                    (position_type == 'SHORT' and trade['action'] == 'SELL'):
                     
                     # Calculate PnL with leverage
-                    leverage = trade.get('leverage', 1.0)  # Default to 1.0 if leverage not set
+                    leverage = trade.get('effective_leverage', trade.get('leverage', 1.0))
                     position_size = trade.get('position_size', trade['quantity'] * trade['entry_price'])
                     
                     if trade['action'] == 'BUY':
@@ -408,8 +470,9 @@ class TradingEngine:
                         # For SHORT positions: profit = (entry_price - current_price) * quantity
                         dollar_pnl = (trade['entry_price'] - price) * trade['quantity']
                     
-                    # Calculate percentage PnL based on margin used (not total position size)
-                    margin_used = position_size / leverage
+                    # Calculate percentage PnL based on ACTUAL margin used
+                    # Use stored margin_used (from Kite API) if available, otherwise calculate
+                    margin_used = trade.get('margin_used', position_size / leverage)
                     pnl = dollar_pnl / margin_used if margin_used > 0 else 0
                     
                     # Handle broker position closure
