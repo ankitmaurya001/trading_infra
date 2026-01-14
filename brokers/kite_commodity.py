@@ -90,16 +90,21 @@ class KiteCommodityBroker:
             actually_enabled = enabled
             if not enabled:
                 try:
-                    # Check if there are any commodity positions (check both 'net' and 'day')
+                    # Check if there are any commodity positions
+                    # Use 'net' positions only to avoid double-counting (day positions are included in net)
                     positions = self.kite.positions()
                     net_positions = positions.get('net', [])
-                    day_positions = positions.get('day', [])
-                    all_positions = net_positions + day_positions
                     
-                    # Filter for MCX positions - check for any MCX position (open or closed today)
-                    # A position with quantity=0 but existing in the list means trading happened
-                    mcx_positions_with_qty = [p for p in all_positions if p.get('exchange') == 'MCX' and p.get('quantity', 0) != 0]
-                    mcx_positions_any = [p for p in all_positions if p.get('exchange') == 'MCX']
+                    # Filter for MCX positions with non-zero quantity (actual open positions)
+                    mcx_positions_with_qty = [
+                        p for p in net_positions 
+                        if p.get('exchange') == 'MCX' and p.get('quantity', 0) != 0
+                    ]
+                    # Also check for any MCX trading activity (even closed positions)
+                    mcx_positions_any = [
+                        p for p in net_positions 
+                        if p.get('exchange') == 'MCX'
+                    ]
                     
                     if mcx_positions_with_qty:
                         actually_enabled = True
