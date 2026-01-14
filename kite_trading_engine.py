@@ -201,16 +201,31 @@ class KiteTradingEngine:
                 print(f"⚠️ Could not get price for {self.symbol}")
                 return 0.0
             
-            # Get actual margin requirement using order_margins API
-            order_margins = self.broker.get_order_margins(
+            # Get margin for both BUY and SELL to check if they differ
+            # For commodity futures, they're typically the same
+            buy_margins = self.broker.get_order_margins(
                 symbol=self.symbol,
                 transaction_type='BUY',
-                quantity=1,  # 1 lot
+                quantity=1,
                 price=current_price,
                 order_type='MARKET'
             )
+            buy_margin = buy_margins.get('total', 0.0)
             
-            return order_margins.get('total', 0.0)
+            sell_margins = self.broker.get_order_margins(
+                symbol=self.symbol,
+                transaction_type='SELL',
+                quantity=1,
+                price=current_price,
+                order_type='MARKET'
+            )
+            sell_margin = sell_margins.get('total', 0.0)
+            
+            # Use the maximum of both (to be safe)
+            if buy_margin != sell_margin and buy_margin > 0 and sell_margin > 0:
+                print(f"   📊 BUY margin: ₹{buy_margin:,.2f}, SELL margin: ₹{sell_margin:,.2f}")
+            
+            return max(buy_margin, sell_margin)
             
         except Exception as e:
             print(f"⚠️ Could not fetch lot margin: {e}")
