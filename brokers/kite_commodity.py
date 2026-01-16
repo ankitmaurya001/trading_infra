@@ -174,6 +174,14 @@ class KiteCommodityBroker:
             if available == 0.0 and equity_available > 0 and actually_enabled:
                 available = equity_available
                 using_single_ledger = True
+                
+                # IMPORTANT: When using single ledger, also get utilised from equity segment
+                equity_utilised_dict = equity_margin.get('utilised', {})
+                if isinstance(equity_utilised_dict, dict):
+                    utilised = equity_utilised_dict.get('debits', equity_utilised_dict.get('span', 0.0))
+                else:
+                    utilised = float(equity_utilised_dict) if equity_utilised_dict else 0.0
+                
                 logger.info(f"Using single ledger: Equity funds (₹{equity_available:.2f}) available for commodity trading")
             
             total = available + utilised

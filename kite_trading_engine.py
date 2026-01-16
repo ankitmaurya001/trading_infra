@@ -941,13 +941,13 @@ class KiteTradingEngine:
                 margins = self.broker.check_margins()
                 available_margin = margins.get('available', 0.0)
                 utilised_margin = margins.get('utilised', 0.0)
-                total_margin = available_margin + utilised_margin
                 
                 # Get raw margin data for detailed analysis
                 raw_margins = margins.get('raw', {})
                 equity_raw = None
                 
                 # Try to get equity margin details (for single ledger)
+                # This is important because utilised_margin from check_margins() might be stale
                 try:
                     all_margins = self.broker.kite.margins()
                     equity_raw = all_margins.get('equity', {})
@@ -959,12 +959,21 @@ class KiteTradingEngine:
                     exposure_margin = utilised_details.get('exposure', 0)
                     total_blocked = utilised_details.get('debits', 0)
                     
+                    # IMPORTANT: Use equity utilised if it's higher (single ledger case)
+                    # This ensures we capture the blocked margin correctly
+                    if total_blocked > utilised_margin:
+                        utilised_margin = total_blocked
+                        self.logger.debug(f"Using equity utilised margin: {utilised_margin:.2f}")
+                    
                 except Exception as e:
                     self.logger.debug(f"Could not get detailed margin info: {e}")
                     m2m_unrealised = 0
                     span_margin = 0
                     exposure_margin = 0
                     total_blocked = utilised_margin
+                
+                # Calculate total margin AFTER potential update from equity utilised
+                total_margin = available_margin + utilised_margin
                 
                 # Calculate required margin for current positions at current price
                 total_required_margin = 0.0
