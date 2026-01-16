@@ -143,6 +143,57 @@ class TradingEngine:
         self.traded_notional_today += expected_notional
         return True, 'ok'
     
+    def _refresh_balance_from_broker(self):
+        """
+        Refresh current_balance from broker to account for funds added mid-session.
+        
+        This ensures that:
+        1. Newly added funds are considered for position sizing
+        2. Balance is always in sync with actual broker balance
+        
+        Only updates if broker balance (minus margin already blocked) is higher than internal balance.
+        """
+        if not self.broker or not hasattr(self.broker, 'check_margins'):
+            return
+        
+        try:
+            margins = self.broker.check_margins()
+            available_margin = margins.get('available', 0.0)
+            utilised_margin = margins.get('utilised', 0.0)
+            
+            # For single ledger (Kite), also check equity utilised
+            # Total account value = available + utilised
+            total_broker_balance = available_margin + utilised_margin
+            
+            # If we have open positions, the utilised margin is blocked for those trades
+            # The available_margin is what we can use for NEW trades
+            # Our internal current_balance should reflect what's available for new positions
+            
+            # Calculate our expected internal balance based on active trades
+            margin_blocked_internally = sum(
+                trade.get('margin_used', 0) 
+                for trade in self.active_trades 
+                if trade.get('status') == 'open'
+            )
+            
+            # If broker's available is higher than our internal current_balance,
+            # funds were added - update our balance
+            if available_margin > self.current_balance:
+                old_balance = self.current_balance
+                self.current_balance = available_margin
+                print(f"💰 Balance refreshed from broker: ₹{old_balance:,.2f} → ₹{self.current_balance:,.2f} (funds added)")
+                logger.info(f"Balance refreshed: {old_balance:.2f} → {self.current_balance:.2f}")
+            
+            # Also update initial_balance if total account value increased
+            # (This helps with PnL calculations when funds are added)
+            if total_broker_balance > self.initial_balance:
+                self.initial_balance = total_broker_balance
+                logger.info(f"Initial balance updated to reflect added funds: {self.initial_balance:.2f}")
+                
+        except Exception as e:
+            logger.warning(f"Could not refresh balance from broker: {e}")
+            # Don't fail the trade, just use existing balance
+    
     def execute_trade(self, strategy: BaseStrategy, action: str, price: float, timestamp: datetime, data: pd.DataFrame = None) -> Dict:
         """
         Execute a new trade with leverage-based position sizing.
@@ -174,6 +225,10 @@ class TradingEngine:
             # Fallback to 1% of price if no data available
             current_atr = price * 0.01
             print(f"Warning: No market data available for ATR calculation, using 1% of price: {current_atr}")
+        
+        # Refresh balance from broker before position sizing
+        # This ensures newly added funds are considered for position sizing
+        self._refresh_balance_from_broker()
         
         # Calculate leverage-based position size
         leverage, position_size, quantity = strategy.calculate_leverage_position_size(
