@@ -97,7 +97,8 @@ class KiteTradingEngine:
         self.trading_engine = TradingEngine(
             initial_balance=initial_balance,
             max_leverage=self.config.get('max_leverage', 10.0),
-            max_loss_percent=self.config.get('max_loss_percent', 2.0)
+            max_loss_percent=self.config.get('max_loss_percent', 2.0),
+            atr_buffer_percent=self.config.get('atr_buffer_percent', 0.0)
         )
         
         # Store lot margin in trading engine for proper position sizing

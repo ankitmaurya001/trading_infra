@@ -29,11 +29,13 @@ class TradingEngine:
     - Logging and reporting
     """
     
-    def __init__(self, initial_balance: float = 10000, max_leverage: float = 10.0, max_loss_percent: float = 2.0):
+    def __init__(self, initial_balance: float = 10000, max_leverage: float = 10.0, max_loss_percent: float = 2.0, 
+                 atr_buffer_percent: float = 0.0):
         self.initial_balance = initial_balance
         self.current_balance = initial_balance
         self.max_leverage = max_leverage
         self.max_loss_percent = max_loss_percent
+        self.atr_buffer_percent = atr_buffer_percent  # Buffer to widen SL/TP (e.g., 20 = 20% wider)
         self.trade_history = []
         self.active_trades = []
         self.session_id = None
@@ -322,6 +324,29 @@ class TradingEngine:
         # Calculate stop loss and take profit levels (ATR-based)
         take_profit, stop_loss = strategy.calculate_trade_levels(price, position_type, current_atr)
         
+        # Apply ATR buffer if configured (widens SL/TP to avoid getting stopped out by noise)
+        # e.g., atr_buffer_percent=20 means 1.2x wider SL/TP
+        atr_buffer_applied = False
+        if self.atr_buffer_percent and self.atr_buffer_percent > 0:
+            buffer_multiplier = 1 + (self.atr_buffer_percent / 100.0)
+            
+            # Widen both SL and TP by the buffer (maintains R:R ratio)
+            original_sl_move = abs(price - stop_loss)
+            original_tp_move = abs(take_profit - price)
+            
+            buffered_sl_move = original_sl_move * buffer_multiplier
+            buffered_tp_move = original_tp_move * buffer_multiplier
+            
+            if position_type.name == 'LONG':
+                stop_loss = price - buffered_sl_move
+                take_profit = price + buffered_tp_move
+            else:  # SHORT
+                stop_loss = price + buffered_sl_move
+                take_profit = price - buffered_tp_move
+            
+            atr_buffer_applied = True
+            print(f"📊 ATR Buffer Applied: +{self.atr_buffer_percent}% (multiplier: {buffer_multiplier:.2f}x)")
+        
         # For Kite commodity trading, cap the stop loss to ensure max loss doesn't exceed max_loss_percent
         is_kite_broker = hasattr(self.broker, 'place_gtt_order') if self.broker else False
         
@@ -330,18 +355,18 @@ class TradingEngine:
                 lot_info = self.broker.get_symbol_filters(self.symbol)
                 lot_size = lot_info.get('lot_size', 1)
                 
-                # Calculate potential loss with ATR-based stop loss
-                atr_price_move = abs(price - stop_loss)
-                atr_loss_rupees = lot_size * atr_price_move
-                atr_loss_percent = (atr_loss_rupees / actual_lot_margin) * 100
+                # Calculate potential loss with current stop loss (after buffer)
+                sl_price_move = abs(price - stop_loss)
+                sl_loss_rupees = lot_size * sl_price_move
+                sl_loss_percent = (sl_loss_rupees / actual_lot_margin) * 100
                 
                 # Calculate max allowed loss
                 max_loss_rupees = actual_lot_margin * (self.max_loss_percent / 100.0)
-                max_price_move = max_loss_rupees / lot_size if lot_size > 0 else atr_price_move
+                max_price_move = max_loss_rupees / lot_size if lot_size > 0 else sl_price_move
                 
-                # Cap the stop loss if ATR-based loss exceeds max_loss_percent
+                # Cap the stop loss if it exceeds max_loss_percent (even after buffer)
                 sl_capped = False
-                if atr_loss_rupees > max_loss_rupees:
+                if sl_loss_rupees > max_loss_rupees:
                     sl_capped = True
                     if position_type.name == 'LONG':
                         stop_loss = price - max_price_move
@@ -358,8 +383,10 @@ class TradingEngine:
                 tp_profit_percent = (tp_profit_rupees / actual_lot_margin) * 100
                 
                 print(f"📊 ATR-based SL/TP (Lot size: {lot_size}, ATR: ₹{current_atr:.2f})")
+                if atr_buffer_applied:
+                    print(f"   📈 ATR Buffer: +{self.atr_buffer_percent}% wider SL/TP")
                 if sl_capped:
-                    print(f"   ⚠️ Stop Loss CAPPED: ATR-based loss ({atr_loss_percent:.1f}%) exceeded max ({self.max_loss_percent}%)")
+                    print(f"   ⚠️ Stop Loss CAPPED: loss ({sl_loss_percent:.1f}%) exceeded max ({self.max_loss_percent}%)")
                 print(f"   Stop Loss: ₹{stop_loss:.2f} (loss: ₹{actual_loss_rupees:.2f} = {actual_loss_percent:.1f}% of margin)")
                 print(f"   Take Profit: ₹{take_profit:.2f} (profit: ₹{tp_profit_rupees:.2f} = {tp_profit_percent:.1f}% of margin)")
                 

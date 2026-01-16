@@ -6,6 +6,7 @@
     "max_leverage": 10,
     "max_loss_percent": 2.0,
     "live_trading": false,
+    "atr_buffer_percent": 20,
     "risk": {
         "max_order_notional": 10000.0,
         "max_daily_notional": 1000000.0,
