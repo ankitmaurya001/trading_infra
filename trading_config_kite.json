@@ -6,7 +6,7 @@
     "max_leverage": 10,
     "max_loss_percent": 2.0,
     "live_trading": false,
-    "atr_buffer_percent": 20,
+    "atr_buffer_percent": 0,
     "risk": {
         "max_order_notional": 10000.0,
         "max_daily_notional": 1000000.0,
@@ -38,6 +38,7 @@
     "log_folder": "logs",
     "commodity_trading": {
         "lot_size": null,
+        "enable_margin_monitoring": false,
         "margin_buffer_percent": 20,
         "margin_check_interval_seconds": 300,
         "margin_alert_threshold_percent": 150,

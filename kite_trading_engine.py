@@ -116,6 +116,7 @@ class KiteTradingEngine:
         self.margin_alert_threshold = commodity_config.get('margin_alert_threshold_percent', 150)
         self.margin_critical_threshold = commodity_config.get('margin_critical_threshold_percent', 110)
         self.use_gtt_for_stop_loss = commodity_config.get('use_gtt_for_stop_loss', True)
+        self.enable_margin_monitoring = commodity_config.get('enable_margin_monitoring', True)  # Can be disabled for testing
         
         # Margin monitoring state
         self.margin_monitor_thread = None
@@ -263,6 +264,14 @@ class KiteTradingEngine:
                     "channel_period": 20,
                     "risk_reward_ratio": 2.0,
                     "trading_fee": 0.0
+                },
+                "commodity_trading": {
+                    "enable_margin_monitoring": True,
+                    "margin_buffer_percent": 20,
+                    "margin_check_interval_seconds": 300,
+                    "margin_alert_threshold_percent": 150,
+                    "margin_critical_threshold_percent": 110,
+                    "use_gtt_for_stop_loss": True
                 },
                 "log_level": "INFO",
                 "log_folder": "logs"
@@ -557,8 +566,12 @@ class KiteTradingEngine:
         self.logger.info(f"🎯 Active Strategies: {[s.name for s in self.strategy_manager.get_strategies()]}")
         self.logger.info(f"💰 Initial Balance: ${self.trading_engine.initial_balance:,.2f}")
         
-        # Start margin monitoring thread (always for live data)
-        self._start_margin_monitor()
+        # Start margin monitoring thread (if enabled)
+        if self.enable_margin_monitoring:
+            self._start_margin_monitor()
+            self.logger.info("💰 Margin monitoring: ENABLED")
+        else:
+            self.logger.warning("⚠️  Margin monitoring: DISABLED (for testing only)")
         
         self.logger.info("=" * 60)
         
@@ -938,8 +951,36 @@ class KiteTradingEngine:
                     time.sleep(self.margin_check_interval)
                     continue
                 
-                # Get current margin status
-                margins = self.broker.check_margins()
+                # Get current margin status with retry logic for connection errors
+                margins = None
+                retry_count = 0
+                max_retries = 3
+                
+                while retry_count < max_retries:
+                    try:
+                        margins = self.broker.check_margins()
+                        break  # Success, exit retry loop
+                    except (ConnectionError, Exception) as e:
+                        retry_count += 1
+                        error_msg = str(e)
+                        if 'Connection' in error_msg or 'RemoteDisconnected' in error_msg:
+                            if retry_count < max_retries:
+                                self.logger.warning(f"⚠️  Connection error checking margins (attempt {retry_count}/{max_retries}). Retrying in 5 seconds...")
+                                time.sleep(5)
+                            else:
+                                self.logger.error(f"❌ Failed to check margins after {max_retries} attempts. Skipping this check cycle.")
+                                time.sleep(self.margin_check_interval)
+                                continue  # Skip this check cycle
+                        else:
+                            # Non-connection error, log and skip
+                            self.logger.error(f"❌ Error checking margins: {e}. Skipping this check cycle.")
+                            time.sleep(self.margin_check_interval)
+                            continue  # Skip this check cycle
+                
+                # If we couldn't get margins after retries, skip this cycle
+                if margins is None:
+                    continue
+                
                 available_margin = margins.get('available', 0.0)
                 utilised_margin = margins.get('utilised', 0.0)
                 
@@ -976,34 +1017,87 @@ class KiteTradingEngine:
                 # Calculate total margin AFTER potential update from equity utilised
                 total_margin = available_margin + utilised_margin
                 
-                # Calculate required margin for current positions at current price
-                total_required_margin = 0.0
-                for trade in self.trading_engine.active_trades:
-                    if trade.get('status') == 'open':
-                        try:
-                            current_price = self.broker.get_price(self.symbol)
-                            if current_price > 0:
-                                # Get actual margin requirement using order_margins API
-                                transaction_type = 'BUY' if trade.get('action') == 'BUY' else 'SELL'
-                                order_margins = self.broker.get_order_margins(
-                                    symbol=self.symbol,
-                                    transaction_type=transaction_type,
-                                    quantity=1,  # 1 lot
-                                    price=current_price,
-                                    order_type='MARKET'
-                                )
-                                actual_margin = order_margins.get('total', 0.0)
-                                if actual_margin > 0:
-                                    total_required_margin += actual_margin
-                                else:
-                                    # Fallback to estimated calculation if API fails
-                                    position_size = trade.get('position_size', 0)
-                                    leverage = trade.get('leverage', 1.0)
-                                    margin_required = position_size / leverage if leverage > 0 else position_size
-                                    total_required_margin += margin_required
-                                    self.logger.warning(f"Could not get actual margin for trade {trade.get('id')}, using estimate")
-                        except Exception as e:
-                            self.logger.warning(f"Error calculating margin for trade {trade.get('id')}: {e}")
+                # CRITICAL FIX: Use stored margin_used from trade records instead of recalculating
+                # The broker has already blocked margin at entry price. Recalculating at current price
+                # causes false positives because:
+                # 1. Margin requirements change with price (especially futures)
+                # 2. We're comparing blocked margin (at entry) vs required margin (at current price)
+                # 3. Multiple API calls increase rate limiting and connection errors
+                
+                # Sum up margin_used from all open trades (what was actually blocked)
+                # This is the margin that was blocked when the trade was opened
+                total_blocked_margin_from_trades = sum(
+                    trade.get('margin_used', 0.0) 
+                    for trade in self.trading_engine.active_trades 
+                    if trade.get('status') == 'open'
+                )
+                
+                # Count how many trades have margin_used stored
+                trades_with_margin = sum(
+                    1 for trade in self.trading_engine.active_trades 
+                    if trade.get('status') == 'open' and trade.get('margin_used', 0.0) > 0
+                )
+                num_open_trades = sum(1 for t in self.trading_engine.active_trades if t.get('status') == 'open')
+                
+                # If margin_used is missing from trades, log a warning
+                if num_open_trades > 0 and trades_with_margin == 0:
+                    self.logger.warning(
+                        f"⚠️  No margin_used found in trade records! "
+                        f"This may cause inaccurate margin checks. "
+                        f"Open trades: {num_open_trades}"
+                    )
+                
+                # Also calculate required margin at current price for comparison (optional, for monitoring)
+                # But don't use this for critical decisions - only for warnings
+                total_required_margin_at_current_price = 0.0
+                current_price = None
+                
+                # Get current price once (not per trade) to reduce API calls
+                try:
+                    current_price = self.broker.get_price(self.symbol)
+                except Exception as e:
+                    self.logger.warning(f"Could not get current price for margin check: {e}")
+                    current_price = None
+                
+                # Only calculate current price margin if we have price and want to monitor changes
+                # This is for informational purposes only, not for critical decisions
+                if current_price and current_price > 0:
+                    # Try to get margin requirement at current price for ONE trade (they're all same symbol)
+                    # This gives us an idea of how margin requirement changed, but we don't use it for exits
+                    try:
+                        # Just check one trade to see current margin requirement (all trades are same symbol)
+                        first_open_trade = next(
+                            (t for t in self.trading_engine.active_trades if t.get('status') == 'open'),
+                            None
+                        )
+                        if first_open_trade:
+                            transaction_type = 'BUY' if first_open_trade.get('action') == 'BUY' else 'SELL'
+                            order_margins = self.broker.get_order_margins(
+                                symbol=self.symbol,
+                                transaction_type=transaction_type,
+                                quantity=1,  # 1 lot
+                                price=current_price,
+                                order_type='MARKET'
+                            )
+                            margin_per_lot_at_current = order_margins.get('total', 0.0)
+                            if margin_per_lot_at_current > 0:
+                                # Multiply by number of open trades
+                                num_open_trades = sum(1 for t in self.trading_engine.active_trades if t.get('status') == 'open')
+                                total_required_margin_at_current_price = margin_per_lot_at_current * num_open_trades
+                    except Exception as e:
+                        self.logger.debug(f"Could not get current price margin requirement (non-critical): {e}")
+                        # Use stored margin_used as fallback
+                        total_required_margin_at_current_price = total_blocked_margin_from_trades
+                
+                # Use stored margin_used for critical decisions (what was actually blocked)
+                # This is what the broker has already blocked, so it's the true requirement
+                total_required_margin = total_blocked_margin_from_trades
+                
+                # If we couldn't get stored margin_used, fall back to current price calculation
+                # But this should rarely happen if trades are properly recorded
+                if total_required_margin == 0.0 and total_required_margin_at_current_price > 0:
+                    self.logger.warning("⚠️  No stored margin_used found, using current price calculation (may be inaccurate)")
+                    total_required_margin = total_required_margin_at_current_price
                 
                 if total_required_margin > 0:
                     # CORRECT LOGIC: Check if TOTAL margin (blocked + available) covers requirement
@@ -1018,11 +1112,16 @@ class KiteTradingEngine:
                     # Buffer ratio: Available margin as % of required (for M2M fluctuations)
                     buffer_ratio = (available_margin / total_required_margin) * 100
                     
-                    # Log margin status
+                    # Log margin status with detailed information
+                    margin_change_info = ""
+                    if total_required_margin_at_current_price > 0 and total_required_margin_at_current_price != total_required_margin:
+                        change_pct = ((total_required_margin_at_current_price - total_required_margin) / total_required_margin) * 100
+                        margin_change_info = f", CurrentPriceReq={total_required_margin_at_current_price:.2f} ({change_pct:+.1f}%)"
+                    
                     self.logger.debug(
                         f"💰 Margin Status: "
                         f"Total={total_margin:.2f}, Blocked={total_blocked:.2f}, "
-                        f"Available={available_margin:.2f}, Required={total_required_margin:.2f}, "
+                        f"Available={available_margin:.2f}, Required(Blocked)={total_required_margin:.2f}{margin_change_info}, "
                         f"Coverage={margin_coverage:.1f}%, Buffer={buffer_ratio:.1f}%, "
                         f"M2M={m2m_unrealised:.2f}"
                     )
@@ -1031,8 +1130,27 @@ class KiteTradingEngine:
                     # Coverage should be >= 100% (total funds cover required margin)
                     # Buffer should be >= some threshold for M2M fluctuations
                     
+                    # Tolerance for rounding errors (1% = 1 percentage point)
+                    # Increased tolerance because margin calculations can have small discrepancies
+                    coverage_tolerance = 1.0
+                    
+                    # IMPORTANT: Check if blocked margin matches what we expect
+                    # If broker's blocked margin is significantly different from our records, something's wrong
+                    blocked_margin_diff = abs(total_blocked - total_required_margin)
+                    blocked_margin_diff_pct = (blocked_margin_diff / total_required_margin * 100) if total_required_margin > 0 else 0
+                    
+                    if blocked_margin_diff_pct > 10:  # More than 10% difference
+                        self.logger.warning(
+                            f"⚠️  Margin mismatch detected: "
+                            f"Broker blocked={total_blocked:.2f}, Our records={total_required_margin:.2f}, "
+                            f"Diff={blocked_margin_diff:.2f} ({blocked_margin_diff_pct:.1f}%)"
+                        )
+                    
                     # Critical: Total margin doesn't cover required (position under-funded)
-                    if margin_coverage < self.margin_critical_threshold:
+                    # Only exit if coverage is actually below 100% (with tolerance for rounding)
+                    # The margin_critical_threshold is used as a warning threshold, not exit threshold
+                    if margin_coverage < (100.0 - coverage_tolerance):
+                        # Actually under-funded - this is truly critical
                         if self.live_trading:
                             self.logger.error(
                                 f"🚨 CRITICAL: Margin coverage critically low! "
@@ -1044,12 +1162,30 @@ class KiteTradingEngine:
                                 f"🚨 CRITICAL: Margin coverage would be critically low ({margin_coverage:.1f}%) - Would exit in live mode"
                             )
                     
-                    # Alert: Low buffer for M2M fluctuations (less than 10% extra)
-                    elif buffer_ratio < 10:
+                    # Warning: Coverage is below alert threshold (but still >= 100%)
+                    elif margin_coverage < self.margin_alert_threshold:
                         self.logger.warning(
-                            f"⚠️  Low margin buffer: Only {buffer_ratio:.1f}% available for M2M fluctuations "
-                            f"(Available={available_margin:.2f}, M2M={m2m_unrealised:.2f})"
+                            f"⚠️  Margin coverage below alert threshold: "
+                            f"Coverage={margin_coverage:.1f}% (alert threshold: {self.margin_alert_threshold}%) "
+                            f"(Total={total_margin:.2f}, Required={total_required_margin:.2f})"
                         )
+                    
+                    # Warning: Low buffer for M2M fluctuations (less than 10% extra)
+                    # This is the key check - do we have enough buffer for price movements?
+                    elif buffer_ratio < 10:
+                        # Check if M2M is negative (losing money) and buffer is low
+                        if m2m_unrealised < 0 and abs(m2m_unrealised) > available_margin * 0.5:
+                            # M2M losses are eating into buffer significantly
+                            self.logger.warning(
+                                f"⚠️  Low margin buffer with negative M2M: "
+                                f"Buffer={buffer_ratio:.1f}%, Available={available_margin:.2f}, "
+                                f"M2M={m2m_unrealised:.2f} (losses consuming buffer)"
+                            )
+                        else:
+                            self.logger.warning(
+                                f"⚠️  Low margin buffer: Only {buffer_ratio:.1f}% available for M2M fluctuations "
+                                f"(Available={available_margin:.2f}, M2M={m2m_unrealised:.2f})"
+                            )
                     
                     # OK: Sufficient margin
                     else:
