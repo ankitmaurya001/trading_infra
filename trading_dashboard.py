@@ -678,7 +678,7 @@ class TradingDashboard:
             display_columns = [
                 'trade_id', 'direction', 'strategy', 'entry_time', 'exit_time',
                 'entry_price', 'exit_price', 'price_change', 'price_change_pct',
-                'quantity', 'leverage', 'margin_used', 'pnl', 'pnl_pct', 'exit_status'
+                'quantity', 'leverage', 'margin_used', 'atr', 'pnl', 'pnl_pct', 'exit_status'
             ]
             
             display_df = display_df[display_columns]
@@ -687,7 +687,7 @@ class TradingDashboard:
             display_df.columns = [
                 'Trade ID', 'Direction', 'Strategy', 'Entry Time', 'Exit Time',
                 'Entry Price', 'Exit Price', 'Price Change', 'Price Change %',
-                'Quantity', 'Leverage', 'Margin Used', 'PnL', 'PnL %', 'Exit Status'
+                'Quantity', 'Leverage', 'Margin Used', 'ATR', 'PnL', 'PnL %', 'Exit Status'
             ]
             
             # Color code PnL
@@ -1470,7 +1470,7 @@ def main():
             st.subheader("🎯 Active Trade")
             trade_info = status['active_trade_info']
             
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
                 st.metric("Strategy", trade_info['strategy'])
             with col2:
@@ -1479,6 +1479,9 @@ def main():
                 st.metric("Entry Price", f"${trade_info['entry_price']:.2f}")
             with col4:
                 st.metric("Quantity", f"{trade_info['quantity']:.4f}")
+            with col5:
+                atr_val = trade_info.get('atr', None)
+                st.metric("ATR (entry)", f"{atr_val:.4f}" if atr_val is not None else "N/A")
             
             # Calculate current PnL if we have current data
             if not market_data.empty:

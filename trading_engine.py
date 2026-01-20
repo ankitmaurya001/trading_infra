@@ -222,15 +222,40 @@ class TradingEngine:
         # Calculate ATR for leverage-based position sizing
         if data is not None and not data.empty:
             atr_series = strategy.calculate_atr(data)
-            current_atr = float(atr_series.iloc[-1]) if not atr_series.empty else price * 0.01
+            if not atr_series.empty:
+                atr_value = atr_series.iloc[-1]
+                # Check if ATR is NaN or invalid
+                if pd.isna(atr_value) or atr_value <= 0:
+                    current_atr = price * 0.01
+                    print(f"⚠️  Warning: ATR is NaN or invalid ({atr_value}), using fallback 1% of price: ${current_atr:.5f}")
+                else:
+                    current_atr = float(atr_value)
+            else:
+                current_atr = price * 0.01
+                print(f"⚠️  Warning: ATR series is empty, using fallback 1% of price: ${current_atr:.5f}")
         else:
             # Fallback to 1% of price if no data available
             current_atr = price * 0.01
-            print(f"Warning: No market data available for ATR calculation, using 1% of price: {current_atr}")
+            print(f"⚠️  Warning: No market data available for ATR calculation, using fallback 1% of price: ${current_atr:.5f}")
         
         # Refresh balance from broker before position sizing
         # This ensures newly added funds are considered for position sizing
         self._refresh_balance_from_broker()
+        
+        # Check if this is a Kite broker (for lot-based trading)
+        is_kite_broker = hasattr(self.broker, 'place_gtt_order') if self.broker else False
+        
+        # Check if this is an MCX commodity (even without broker, for mock mode)
+        # MCX commodities typically have "MCX" in exchange or symbol patterns like "NATGASMINI", "GOLDM", etc.
+        is_mcx_commodity = False
+        if hasattr(self, 'symbol') and self.symbol:
+            # Check if symbol matches MCX commodity patterns
+            mcx_patterns = ['NATGASMINI', 'GOLDM', 'SILVERM', 'CRUDEOILM', 'SILVERMIC', 'GOLDGUINEA']
+            is_mcx_commodity = any(pattern in self.symbol.upper() for pattern in mcx_patterns)
+        if hasattr(self, 'exchange') and self.exchange:
+            is_mcx_commodity = is_mcx_commodity or (self.exchange.upper() == 'MCX')
+        
+        print(f"🔍 Debug: is_kite_broker = {is_kite_broker}, broker = {type(self.broker).__name__ if self.broker else None}, is_mcx_commodity = {is_mcx_commodity}")
         
         # Calculate leverage-based position size
         leverage, position_size, quantity = strategy.calculate_leverage_position_size(
@@ -241,6 +266,13 @@ class TradingEngine:
             max_leverage=self.max_leverage,
             max_loss_percent=self.max_loss_percent
         )
+        
+        # For commodity futures (Kite broker OR MCX commodities), quantity should be 1 (number of lots)
+        # The calculated quantity is in base units, but we trade in lots
+        original_quantity = quantity
+        if is_kite_broker or is_mcx_commodity:
+            quantity = 1  # 1 lot for commodity futures
+            print(f"📦 Overriding quantity to 1 lot for commodity futures (original calculated: {original_quantity:.4f})")
         
         # Risk checks
         expected_notional = position_size
@@ -347,14 +379,62 @@ class TradingEngine:
             atr_buffer_applied = True
             print(f"📊 ATR Buffer Applied: +{self.atr_buffer_percent}% (multiplier: {buffer_multiplier:.2f}x)")
         
-        # For Kite commodity trading, cap the stop loss to ensure max loss doesn't exceed max_loss_percent
-        is_kite_broker = hasattr(self.broker, 'place_gtt_order') if self.broker else False
+        # MCX commodity lot sizes (common ones) - lookup table for mock mode
+        mcx_lot_sizes = {
+            'NATGASMINI': 250,  # MMBTU
+            'GOLDM': 100,  # grams
+            'SILVERM': 30,  # kg
+            'CRUDEOILM': 100,  # barrels
+            'SILVERMIC': 5,  # kg
+            'GOLDGUINEA': 8,  # grams
+        }
         
-        if is_kite_broker and actual_lot_margin and actual_lot_margin > 0:
+        # Get and store lot_size for commodity futures (needed for correct PnL calculation)
+        # (is_kite_broker and is_mcx_commodity are already defined above)
+        lot_size = None
+        if is_kite_broker:
+            print(f"🔍 Debug: Attempting to retrieve lot_size for {self.symbol}")
             try:
+                # Try get_symbol_filters first
+                print(f"🔍 Debug: Calling broker.get_symbol_filters('{self.symbol}')")
                 lot_info = self.broker.get_symbol_filters(self.symbol)
-                lot_size = lot_info.get('lot_size', 1)
+                print(f"🔍 Debug: get_symbol_filters returned: {lot_info}")
+                if lot_info:
+                    lot_size = lot_info.get('lot_size')
+                    if lot_size:
+                        print(f"📦 Lot Size retrieved from get_symbol_filters: {lot_size} (for {self.symbol})")
+                    else:
+                        print(f"⚠️  lot_info exists but lot_size key not found. Keys: {list(lot_info.keys())}")
                 
+                # If not found, try get_lot_size method directly
+                if not lot_size and hasattr(self.broker, 'get_lot_size'):
+                    print(f"🔍 Debug: Trying broker.get_lot_size('{self.symbol}')")
+                    lot_size = self.broker.get_lot_size(self.symbol)
+                    print(f"🔍 Debug: get_lot_size returned: {lot_size}")
+                    if lot_size:
+                        print(f"📦 Lot Size retrieved from get_lot_size: {lot_size} (for {self.symbol})")
+                
+                if not lot_size:
+                    print(f"⚠️  Could not retrieve lot_size for {self.symbol}")
+            except Exception as e:
+                print(f"⚠️  Error retrieving lot_size: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # If lot_size not found from broker, try lookup table for MCX commodities
+        if not lot_size and is_mcx_commodity and hasattr(self, 'symbol') and self.symbol:
+            for pattern, size in mcx_lot_sizes.items():
+                if pattern in self.symbol.upper():
+                    lot_size = size
+                    print(f"📦 Lot Size from lookup table: {lot_size} (for {self.symbol}, pattern: {pattern})")
+                    break
+        
+        if not lot_size and (is_kite_broker or is_mcx_commodity):
+            print(f"⚠️  Could not determine lot_size for {self.symbol if hasattr(self, 'symbol') else 'symbol'}")
+        
+        # Only proceed with SL/TP validation if we have both lot_size and actual_lot_margin
+        if is_kite_broker and actual_lot_margin and actual_lot_margin > 0 and lot_size:
+            try:
                 # Calculate potential loss with current stop loss (after buffer)
                 sl_price_move = abs(price - stop_loss)
                 sl_loss_rupees = lot_size * sl_price_move
@@ -399,9 +479,6 @@ class TradingEngine:
         gtt_order = None
         if self.broker and self.use_broker:
             try:
-                # Check if this is a Kite broker (for lot-based trading and GTT)
-                is_kite_broker = hasattr(self.broker, 'place_gtt_order')
-                
                 # For Kite broker, use lot-based quantity (1 lot)
                 # For other brokers, use calculated quantity
                 order_quantity = 1 if is_kite_broker else quantity
@@ -482,8 +559,15 @@ class TradingEngine:
             'pnl': 0,
             'broker_order_id': broker_order_id,
             'stop_loss_order_id': stop_loss_order_id,
-            'gtt_id': gtt_id  # Store GTT ID separately for Kite broker
+            'gtt_id': gtt_id,  # Store GTT ID separately for Kite broker
+            'lot_size': lot_size  # Store lot_size for commodity futures (needed for correct PnL calculation)
         }
+        
+        # Debug: Print lot_size storage
+        if lot_size:
+            print(f"💾 Stored lot_size in trade record: {lot_size}")
+        else:
+            print(f"⚠️  lot_size is None/not found - will use quantity only for PnL")
         
         # Update balance (subtract the margin requirement, not the full position size)
         # For Kite commodity trading, use actual lot margin from API
@@ -516,7 +600,11 @@ class TradingEngine:
         # Print trade execution log
         print(f"🔄 [{timestamp.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - {action} {quantity:.4f} {self.symbol} @ ${price:.2f}")
         print(f"💰 Position Size: ${position_size:.2f} (Leverage: {effective_leverage:.1f}x), Margin: ${margin_required:.2f}, New Balance: ${self.current_balance:.2f}")
-        print(f"📊 ATR: ${current_atr:.2f}, Max Loss: {self.max_loss_percent}%")
+        # Format ATR with appropriate precision: use 5 decimal places for small values (< 0.01), otherwise 2 decimal places
+        if current_atr < 0.01:
+            print(f"📊 ATR: ${current_atr:.5f}, Max Loss: {self.max_loss_percent}%")
+        else:
+            print(f"📊 ATR: ${current_atr:.2f}, Max Loss: {self.max_loss_percent}%")
         
         return trade
     
@@ -545,12 +633,44 @@ class TradingEngine:
                     leverage = trade.get('effective_leverage', trade.get('leverage', 1.0))
                     position_size = trade.get('position_size', trade['quantity'] * trade['entry_price'])
                     
-                    if trade['action'] == 'BUY':
-                        # For LONG positions: profit = (current_price - entry_price) * quantity
-                        dollar_pnl = (price - trade['entry_price']) * trade['quantity']
+                    # For commodity futures (Kite broker), use lot_size for PnL calculation
+                    # For other brokers, use quantity directly
+                    # lot_size represents the contract size per lot (e.g., 250 MMBTU for NATGASMINI)
+                    # quantity represents number of lots (1 for commodity futures)
+                    lot_size_for_pnl = trade.get('lot_size')
+                    quantity_for_pnl = trade.get('quantity', 1)
+                    
+                    print(f"🔍 PnL Calculation Debug:")
+                    print(f"   lot_size from trade: {lot_size_for_pnl}")
+                    print(f"   quantity from trade: {quantity_for_pnl}")
+                    print(f"   entry_price: {trade['entry_price']:.2f}")
+                    print(f"   exit_price: {price:.2f}")
+                    
+                    if lot_size_for_pnl and lot_size_for_pnl > 0:
+                        # Commodity futures: PnL = price_change × lot_size × quantity
+                        # Since quantity is typically 1 for commodities, this simplifies to price_change × lot_size
+                        if trade['action'] == 'BUY':
+                            # For LONG positions: profit = (current_price - entry_price) * lot_size * quantity
+                            price_change = price - trade['entry_price']
+                            dollar_pnl = price_change * lot_size_for_pnl * quantity_for_pnl
+                            print(f"   ✅ Using lot_size: PnL = ({price:.2f} - {trade['entry_price']:.2f}) × {lot_size_for_pnl} × {quantity_for_pnl} = {dollar_pnl:.2f}")
+                        else:
+                            # For SHORT positions: profit = (entry_price - current_price) * lot_size * quantity
+                            price_change = trade['entry_price'] - price
+                            dollar_pnl = price_change * lot_size_for_pnl * quantity_for_pnl
+                            print(f"   ✅ Using lot_size: PnL = ({trade['entry_price']:.2f} - {price:.2f}) × {lot_size_for_pnl} × {quantity_for_pnl} = {dollar_pnl:.2f}")
                     else:
-                        # For SHORT positions: profit = (entry_price - current_price) * quantity
-                        dollar_pnl = (trade['entry_price'] - price) * trade['quantity']
+                        # For non-commodity brokers (e.g., Binance), quantity is already in base units
+                        if trade['action'] == 'BUY':
+                            # For LONG positions: profit = (current_price - entry_price) * quantity
+                            price_change = price - trade['entry_price']
+                            dollar_pnl = price_change * quantity_for_pnl
+                            print(f"   ⚠️  No lot_size found, using quantity only: PnL = ({price:.2f} - {trade['entry_price']:.2f}) × {quantity_for_pnl} = {dollar_pnl:.2f}")
+                        else:
+                            # For SHORT positions: profit = (entry_price - current_price) * quantity
+                            price_change = trade['entry_price'] - price
+                            dollar_pnl = price_change * quantity_for_pnl
+                            print(f"   ⚠️  No lot_size found, using quantity only: PnL = ({trade['entry_price']:.2f} - {price:.2f}) × {quantity_for_pnl} = {dollar_pnl:.2f}")
                     
                     # Calculate percentage PnL based on ACTUAL margin used
                     # Use stored margin_used (from Kite API) if available, otherwise calculate
@@ -643,7 +763,8 @@ class TradingEngine:
                     
                     # Update balance - add back margin plus profit/loss
                     # For leveraged trades, we only used margin, not the full position value
-                    margin_used = position_size / leverage
+                    # Use margin_used already calculated above (line 571) - this uses stored value from Kite API
+                    # for commodity futures, ensuring correct margin calculation based on base price
                     
                     # Add back the margin plus the dollar PnL
                     self.current_balance += margin_used + dollar_pnl
@@ -780,7 +901,9 @@ class TradingEngine:
                     'action': trade['action'],
                     'entry_price': trade['entry_price'],
                     'quantity': trade['quantity'],
-                    'entry_time': trade['entry_time']
+                    'entry_time': trade['entry_time'],
+                    # ATR at entry (useful for sizing + explaining risk)
+                    'atr': trade.get('atr', None)
                 }
         
         total_pnl = self.current_balance - self.initial_balance
