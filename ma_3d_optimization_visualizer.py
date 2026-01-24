@@ -2582,7 +2582,8 @@ class MAOptimization3DVisualizer:
                 'score': data[metric][best_idx],
                 'sharpe_ratio': data['sharpe_ratio'][best_idx],
                 'total_pnl': data['total_pnl'][best_idx],
-                'win_rate': data['win_rate'][best_idx]
+                'win_rate': data['win_rate'][best_idx],
+                'total_trades': data['total_trades'][best_idx]
             }
         
         # Overall best parameter (highest score across all RR ratios)
@@ -2596,7 +2597,8 @@ class MAOptimization3DVisualizer:
                     'score': score,
                     'sharpe_ratio': data['sharpe_ratio'][i],
                     'total_pnl': data['total_pnl'][i],
-                    'win_rate': data['win_rate'][i]
+                    'win_rate': data['win_rate'][i],
+                    'total_trades': data['total_trades'][i]
                 })
         
         overall_best = max(all_scores, key=lambda x: x['score'])
@@ -2609,6 +2611,7 @@ class MAOptimization3DVisualizer:
         print(f"   Sharpe Ratio: {overall_best['sharpe_ratio']:.4f}")
         print(f"   Total PnL: {overall_best['total_pnl']:.2%}")
         print(f"   Win Rate: {overall_best['win_rate']:.2%}")
+        print(f"   Total Trades: {overall_best['total_trades']}")
         
         print(f"\n📈 BEST PARAMETERS BY RISK-REWARD RATIO:")
         print("-" * 60)
@@ -2616,7 +2619,7 @@ class MAOptimization3DVisualizer:
             data = best_by_rr[rr]
             print(f"RR {rr:3.1f}: Short={int(data['short_window']):2d}, Long={int(data['long_window']):2d} | "
                   f"Score={data['score']:8.2f} | PnL={data['total_pnl']:6.2%} | "
-                  f"Sharpe={data['sharpe_ratio']:.4f}")
+                  f"Sharpe={data['sharpe_ratio']:.4f} | Trades={data['total_trades']}")
         
         # Most robust parameters
         if robustness['robust_parameters']:
@@ -2704,7 +2707,7 @@ class MAOptimization3DVisualizer:
         
         overall = recommendations['overall_best']
         print(f"• For MAXIMUM PERFORMANCE: Short={int(overall['short_window'])}, Long={int(overall['long_window'])}, RR={overall['risk_reward_ratio']}")
-        print(f"  Expected: {overall['score']:.0f} composite score, {overall['total_pnl']:.1f}% PnL, {overall['sharpe_ratio']:.3f} Sharpe")
+        print(f"  Expected: {overall['score']:.0f} composite score, {overall['total_pnl']:.1f}% PnL, {overall['sharpe_ratio']:.3f} Sharpe, {overall['total_trades']} trades")
         
         if recommendations['robustness_analysis']['robust_parameters']:
             robust = recommendations['robustness_analysis']['robust_parameters'][0][1]
@@ -3011,6 +3014,7 @@ class MAOptimization3DVisualizer:
             print(f"  Best Sharpe Ratio: {data['sharpe_ratio'][best_idx]:.4f}")
             print(f"  Best Total PnL: {data['total_pnl'][best_idx]:.2%}")
             print(f"  Best Win Rate: {data['win_rate'][best_idx]:.2%}")
+            print(f"  Total Trades: {data['total_trades'][best_idx]}")
             print(f"  Total Valid Combinations: {len(valid_scores)}")
 
 

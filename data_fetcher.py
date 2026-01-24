@@ -26,6 +26,33 @@ except ImportError:
     BINANCE_AVAILABLE = False
     logging.warning("Binance client not available. Install with: pip install python-binance")
 
+# cTrader imports
+try:
+    from ctrader_open_api import Client as CTraderClient, TcpProtocol, EndPoints, Protobuf
+    from ctrader_open_api.messages.OpenApiMessages_pb2 import (
+        ProtoOASymbolsListReq,  # Note: SymbolsList (plural), not SymbolList
+        ProtoOAGetTrendbarsReq,
+        ProtoOAApplicationAuthReq,
+        ProtoOAGetAccountListByAccessTokenReq,
+        ProtoOAAccountAuthReq,
+        ProtoOAGetTrendbarsRes,
+        ProtoOASymbolsListRes,  # Note: SymbolsList (plural)
+        ProtoOAGetAccountListByAccessTokenRes,
+        ProtoOAApplicationAuthRes,
+        ProtoOAAccountAuthRes,
+        ProtoOAErrorRes  # For error handling
+    )
+    from ctrader_open_api.messages.OpenApiModelMessages_pb2 import ProtoOATrendbarPeriod  # Note: In ModelMessages, not Common
+    from twisted.internet import reactor
+    from twisted.internet.defer import Deferred
+    import threading
+    import time
+    CTRADER_AVAILABLE = True
+except ImportError as e:
+    CTRADER_AVAILABLE = False
+    # Only warn if someone actually tries to use it
+    # logging.warning(f"cTrader Open API not available: {e}. Install with: pip install ctrader-open-api")
+
 class DataFetcher:
     def __init__(self):
         self.data = None
@@ -944,6 +971,621 @@ class BinanceDataFetcher:
         try:
             ticker = self.client.get_ticker(symbol=symbol)
             return float(ticker.get('lastPrice', 0))
+        except Exception as e:
+            logging.error(f"Error fetching current price for {symbol}: {e}")
+            return None
+
+
+class CTraderDataFetcher:
+    """
+    Data fetcher for cTrader Open API
+    Provides historical data for forex markets (EURUSD, GBPUSD, etc.)
+    """
+    
+    def __init__(self, client_id: str, client_secret: str, access_token: str, 
+                 account_id, demo: bool = True):
+        """
+        Initialize cTrader data fetcher
+        
+        Args:
+            client_id (str): Your cTrader Open API client ID
+            client_secret (str): Your cTrader Open API client secret
+            access_token (str): Access token obtained from OAuth flow
+            account_id (int or str): cTrader account ID (ctidTraderAccountId) - should be numeric
+            demo (bool): If True, use demo server; if False, use live server
+        """
+        if not CTRADER_AVAILABLE:
+            raise ImportError("cTrader Open API not available. Install with: pip install ctrader-open-api")
+        
+        # Convert account_id to int if it's a string
+        if isinstance(account_id, str):
+            if account_id.isdigit():
+                account_id = int(account_id)
+            else:
+                raise ValueError(f"Account ID must be numeric. Got: {account_id}. Please check your FTMO/cTrader account for the numeric Account ID.")
+        
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.access_token = access_token
+        self.account_id = account_id
+        self.demo = demo
+        
+        # Select endpoint based on demo/live
+        self.host = EndPoints.PROTOBUF_DEMO_HOST if demo else EndPoints.PROTOBUF_LIVE_HOST
+        self.port = EndPoints.PROTOBUF_PORT
+        
+        # Symbol cache
+        self.symbol_cache = {}
+        
+        # Thread-safe data storage
+        self._data_lock = threading.Lock()
+        self._received_data = None
+        self._error = None
+        
+    def _run_reactor_in_thread(self, timeout=30):
+        """Run Twisted reactor in a separate thread with timeout"""
+        def run_reactor():
+            try:
+                reactor.run(installSignalHandlers=0)
+            except Exception as e:
+                # Ignore ReactorNotRunning errors - they're expected when stopping
+                if "ReactorNotRunning" not in str(type(e).__name__):
+                    logging.error(f"Reactor error: {e}")
+        
+        reactor_thread = threading.Thread(target=run_reactor, daemon=True)
+        reactor_thread.start()
+        time.sleep(0.5)  # Give reactor time to start
+        
+        return reactor_thread
+    
+    def _stop_reactor(self):
+        """Stop the Twisted reactor"""
+        try:
+            if reactor.running:
+                # Use callFromThread to safely stop from another thread
+                reactor.callFromThread(reactor.stop)
+        except Exception as e:
+            # Ignore ReactorNotRunning errors - reactor may have already stopped
+            if "ReactorNotRunning" not in str(type(e).__name__):
+                pass
+    
+    def _get_symbol_id(self, symbol: str) -> Optional[int]:
+        """
+        Get symbol ID for a given symbol name (e.g., 'EURUSD')
+        Uses deferred callbacks pattern like the sample notebook
+        
+        Args:
+            symbol (str): Symbol name (e.g., 'EURUSD', 'GBPUSD')
+            
+        Returns:
+            int: Symbol ID, or None if not found
+        """
+        # Check cache first
+        if symbol in self.symbol_cache:
+            return self.symbol_cache[symbol]
+        
+        # Normalize symbol name (remove =X suffix if present)
+        symbol_clean = symbol.replace('=X', '').upper()
+        
+        # Create client
+        client = CTraderClient(self.host, self.port, TcpProtocol)
+        
+        # Data storage for async callbacks
+        symbol_id = None
+        error_occurred = False
+        
+        def on_error(failure):
+            """Error callback for deferred"""
+            nonlocal error_occurred
+            error_occurred = True
+            logging.error(f"cTrader error: {failure}")
+            try:
+                client.stopService()
+            except:
+                pass
+            self._stop_reactor()
+        
+        def symbols_response_callback(result):
+            """Handle symbol list response - using deferred pattern"""
+            nonlocal symbol_id
+            try:
+                # Extract message using Protobuf.extract like the sample
+                message = Protobuf.extract(result)
+                
+                # Check for error response first
+                if isinstance(message, ProtoOAErrorRes):
+                    error_msg = getattr(message, 'description', 'Unknown error')
+                    error_code = getattr(message, 'errorCode', 'Unknown')
+                    logging.error(f"cTrader error: Code={error_code}, Message={error_msg}")
+                    nonlocal error_occurred
+                    error_occurred = True
+                    try:
+                        client.stopService()
+                    except:
+                        pass
+                    self._stop_reactor()
+                    return
+                
+                # Handle symbol list response
+                if isinstance(message, ProtoOASymbolsListRes):
+                    logging.info(f"Received symbol list with {len(message.symbol)} symbols")
+                    
+                    # Find matching symbol
+                    for sym in message.symbol:
+                        if sym.symbolName.upper() == symbol_clean:
+                            symbol_id = sym.symbolId
+                            self.symbol_cache[symbol] = symbol_id
+                            logging.info(f"✅ Found symbol {symbol_clean} with ID: {symbol_id}")
+                            break
+                    
+                    if symbol_id is None:
+                        # Log first 10 symbols for debugging
+                        available = [s.symbolName for s in message.symbol[:10]]
+                        logging.warning(f"Symbol {symbol_clean} not found. Available symbols (first 10): {available}")
+                    
+                    # Stop after receiving symbol list
+                    time.sleep(0.2)
+                    try:
+                        client.stopService()
+                    except:
+                        pass
+                    self._stop_reactor()
+                else:
+                    logging.warning(f"Unexpected message type: {message.__class__.__name__}")
+                    try:
+                        client.stopService()
+                    except:
+                        pass
+                    self._stop_reactor()
+            except Exception as e:
+                logging.error(f"Error processing symbol list: {e}")
+                import traceback
+                traceback.print_exc()
+                try:
+                    client.stopService()
+                except:
+                    pass
+                self._stop_reactor()
+        
+        def account_auth_response_callback(result):
+            """Handle account auth response - using deferred pattern"""
+            try:
+                message = Protobuf.extract(result)
+                
+                # Check for error response
+                if isinstance(message, ProtoOAErrorRes):
+                    error_msg = getattr(message, 'description', 'Unknown error')
+                    error_code = getattr(message, 'errorCode', 'Unknown')
+                    logging.error(f"Account auth error: Code={error_code}, Message={error_msg}")
+                    nonlocal error_occurred
+                    error_occurred = True
+                    try:
+                        client.stopService()
+                    except:
+                        pass
+                    self._stop_reactor()
+                    return
+                
+                logging.info("Account authenticated, requesting symbol list...")
+                # Request symbol list
+                sym_req = ProtoOASymbolsListReq()
+                sym_req.ctidTraderAccountId = self.account_id
+                sym_req.includeArchivedSymbols = False
+                deferred = client.send(sym_req)
+                deferred.addCallbacks(symbols_response_callback, on_error)
+            except Exception as e:
+                logging.error(f"Error in account auth callback: {e}")
+                on_error(e)
+        
+        def application_auth_response_callback(result):
+            """Handle application auth response - using deferred pattern"""
+            try:
+                logging.info("Application authenticated, authenticating account...")
+                # Authenticate account (skip account list like the sample)
+                acc_auth = ProtoOAAccountAuthReq()
+                acc_auth.ctidTraderAccountId = self.account_id
+                acc_auth.accessToken = self.access_token
+                deferred = client.send(acc_auth)
+                deferred.addCallbacks(account_auth_response_callback, on_error)
+            except Exception as e:
+                logging.error(f"Error in app auth callback: {e}")
+                on_error(e)
+        
+        def on_connect(client_obj):
+            """Handle connection - using deferred pattern like sample"""
+            try:
+                logging.info("Connected to cTrader, starting authentication...")
+                # Authenticate application
+                app_auth = ProtoOAApplicationAuthReq()
+                app_auth.clientId = self.client_id
+                app_auth.clientSecret = self.client_secret
+                deferred = client.send(app_auth)
+                deferred.addCallbacks(application_auth_response_callback, on_error)
+            except Exception as e:
+                logging.error(f"Error in on_connect: {e}")
+                on_error(e)
+        
+        def on_disconnected(client_obj, reason):
+            """Handle disconnection"""
+            logging.warning(f"Disconnected: {reason}")
+            self._stop_reactor()
+        
+        # Set up callbacks (like the sample)
+        client.setConnectedCallback(on_connect)
+        client.setDisconnectedCallback(on_disconnected)
+        
+        # Start service and wait
+        client.startService()
+        
+        # Run reactor in thread and wait
+        reactor_thread = self._run_reactor_in_thread()
+        reactor_thread.join(timeout=15)
+        
+        if error_occurred:
+            return None
+        
+        return symbol_id
+    
+    def fetch_historical_data(self, symbol: str, start_date: str, end_date: str,
+                            interval: str = "15m") -> pd.DataFrame:
+        """
+        Fetch historical data from cTrader
+        
+        Args:
+            symbol (str): Trading symbol (e.g., 'EURUSD', 'GBPUSD')
+            start_date (str): Start date in 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS' format
+            end_date (str): End date in 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS' format
+            interval (str): Data interval ('1m', '5m', '15m', '30m', '1h', '4h', '1d')
+            
+        Returns:
+            pd.DataFrame: Historical OHLCV data
+        """
+        try:
+            # Parse datetime strings
+            try:
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            
+            try:
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            
+            # Map interval to cTrader format
+            # Note: Enum values are M1, M5, M15, etc., not OATrendbarPeriod_M1
+            interval_mapping = {
+                '1m': ProtoOATrendbarPeriod.M1,
+                '5m': ProtoOATrendbarPeriod.M5,
+                '15m': ProtoOATrendbarPeriod.M15,
+                '30m': ProtoOATrendbarPeriod.M30,
+                '1h': ProtoOATrendbarPeriod.H1,
+                '4h': ProtoOATrendbarPeriod.H4,
+                '1d': ProtoOATrendbarPeriod.D1,
+            }
+            
+            ctrader_period = interval_mapping.get(interval, ProtoOATrendbarPeriod.M15)
+            
+            # Check cache first
+            symbol_clean = symbol.upper().replace("/", "")
+            symbol_id = self.symbol_cache.get(symbol)
+            
+            # Convert timestamps to milliseconds
+            from_ts = int(start_dt.timestamp() * 1000)
+            to_ts = int(end_dt.timestamp() * 1000)
+            
+            # Create client
+            client = CTraderClient(self.host, self.port, TcpProtocol)
+            
+            # Data storage
+            bars_data = []
+            error_occurred = False
+            
+            def on_error(failure):
+                """Error callback for deferred - matches sample pattern"""
+                nonlocal error_occurred
+                error_occurred = True
+                logging.error(f"cTrader error: {failure}")
+                try:
+                    client.stopService()
+                except:
+                    pass
+                self._stop_reactor()
+            
+            def trendbars_response_callback(result):
+                """Handle trendbars response - using deferred pattern like sample"""
+                nonlocal bars_data
+                try:
+                    # Extract message using Protobuf.extract like the sample
+                    message = Protobuf.extract(result)
+                    
+                    # Check for error response first
+                    if isinstance(message, ProtoOAErrorRes):
+                        error_msg = getattr(message, 'description', 'Unknown error')
+                        error_code = getattr(message, 'errorCode', 'Unknown')
+                        logging.error(f"cTrader error: Code={error_code}, Message={error_msg}")
+                        nonlocal error_occurred
+                        error_occurred = True
+                        try:
+                            client.stopService()
+                        except:
+                            pass
+                        self._stop_reactor()
+                        return
+                    
+                    # Handle trendbars response
+                    if isinstance(message, ProtoOAGetTrendbarsRes):
+                        trendbars = message
+                        logging.info(f"Received {len(trendbars.trendbar)} trendbars")
+                        
+                        # Convert trendbars to data (like the sample)
+                        for bar in trendbars.trendbar:
+                            # Use utcTimestampInMinutes * 60 like the sample
+                            timestamp = bar.utcTimestampInMinutes * 60
+                            # Convert prices by dividing by 100000.0 like the sample
+                            open_price = (bar.low + bar.deltaOpen) / 100000.0
+                            high_price = (bar.low + bar.deltaHigh) / 100000.0
+                            low_price = bar.low / 100000.0
+                            close_price = (bar.low + bar.deltaClose) / 100000.0
+                            
+                            bars_data.append({
+                                'timestamp': timestamp,
+                                'open': open_price,
+                                'high': high_price,
+                                'low': low_price,
+                                'close': close_price,
+                                'volume': bar.volume,
+                            })
+                        
+                        # Stop after receiving trendbars
+                        time.sleep(0.2)
+                        try:
+                            client.stopService()
+                        except:
+                            pass
+                        self._stop_reactor()
+                    else:
+                        logging.warning(f"Unexpected message type: {message.__class__.__name__}")
+                        try:
+                            client.stopService()
+                        except:
+                            pass
+                        self._stop_reactor()
+                except Exception as e:
+                    logging.error(f"Error processing trendbars: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    try:
+                        client.stopService()
+                    except:
+                        pass
+                    self._stop_reactor()
+            
+            def request_trendbars():
+                """Request trendbars using the current symbol_id"""
+                nonlocal symbol_id
+                logging.info(f"Requesting trendbars for symbol ID {symbol_id}...")
+                bars_req = ProtoOAGetTrendbarsReq()
+                bars_req.ctidTraderAccountId = self.account_id
+                bars_req.symbolId = symbol_id
+                bars_req.period = ctrader_period
+                bars_req.fromTimestamp = from_ts
+                bars_req.toTimestamp = to_ts
+                deferred = client.send(bars_req)
+                deferred.addCallbacks(trendbars_response_callback, on_error)
+            
+            def symbols_response_callback(result):
+                """Handle symbol list response and then request trendbars"""
+                nonlocal symbol_id, error_occurred
+                try:
+                    message = Protobuf.extract(result)
+                    
+                    if isinstance(message, ProtoOAErrorRes):
+                        error_msg = getattr(message, 'description', 'Unknown error')
+                        error_code = getattr(message, 'errorCode', 'Unknown')
+                        logging.error(f"Symbol list error: Code={error_code}, Message={error_msg}")
+                        error_occurred = True
+                        try:
+                            client.stopService()
+                        except:
+                            pass
+                        self._stop_reactor()
+                        return
+                    
+                    if isinstance(message, ProtoOASymbolsListRes):
+                        logging.info(f"Received {len(message.symbol)} symbols")
+                        for sym in message.symbol:
+                            if sym.symbolName.upper() == symbol_clean:
+                                symbol_id = sym.symbolId
+                                self.symbol_cache[symbol] = symbol_id
+                                logging.info(f"✅ Found {symbol_clean} with ID: {symbol_id}")
+                                break
+                        
+                        if symbol_id is None:
+                            logging.error(f"Symbol {symbol_clean} not found in cTrader")
+                            error_occurred = True
+                            try:
+                                client.stopService()
+                            except:
+                                pass
+                            self._stop_reactor()
+                            return
+                        
+                        # Now request trendbars
+                        request_trendbars()
+                    else:
+                        logging.warning(f"Unexpected message type: {message.__class__.__name__}")
+                        error_occurred = True
+                        try:
+                            client.stopService()
+                        except:
+                            pass
+                        self._stop_reactor()
+                except Exception as e:
+                    logging.error(f"Error processing symbol list: {e}")
+                    error_occurred = True
+                    try:
+                        client.stopService()
+                    except:
+                        pass
+                    self._stop_reactor()
+            
+            def account_auth_response_callback(result):
+                """Handle account auth response - using deferred pattern like sample"""
+                nonlocal symbol_id, error_occurred
+                try:
+                    message = Protobuf.extract(result)
+                    
+                    # Check for error response
+                    if isinstance(message, ProtoOAErrorRes):
+                        error_msg = getattr(message, 'description', 'Unknown error')
+                        error_code = getattr(message, 'errorCode', 'Unknown')
+                        logging.error(f"Account auth error: Code={error_code}, Message={error_msg}")
+                        error_occurred = True
+                        try:
+                            client.stopService()
+                        except:
+                            pass
+                        self._stop_reactor()
+                        return
+                    
+                    logging.info("Account authenticated")
+                    
+                    # If symbol_id is not cached, get symbol list first
+                    if symbol_id is None:
+                        logging.info("Symbol not cached, requesting symbol list...")
+                        sym_req = ProtoOASymbolsListReq()
+                        sym_req.ctidTraderAccountId = self.account_id
+                        sym_req.includeArchivedSymbols = False
+                        deferred = client.send(sym_req)
+                        deferred.addCallbacks(symbols_response_callback, on_error)
+                    else:
+                        # Symbol already cached, request trendbars directly
+                        request_trendbars()
+                except Exception as e:
+                    logging.error(f"Error in account auth callback: {e}")
+                    on_error(e)
+            
+            def application_auth_response_callback(result):
+                """Handle application auth response - using deferred pattern like sample"""
+                try:
+                    message = Protobuf.extract(result)
+                    
+                    # Check for error response
+                    if isinstance(message, ProtoOAErrorRes):
+                        error_msg = getattr(message, 'description', 'Unknown error')
+                        error_code = getattr(message, 'errorCode', 'Unknown')
+                        logging.error(f"Application auth error: Code={error_code}, Message={error_msg}")
+                        nonlocal error_occurred
+                        error_occurred = True
+                        try:
+                            client.stopService()
+                        except:
+                            pass
+                        self._stop_reactor()
+                        return
+                    
+                    logging.info("Application authenticated, authenticating account...")
+                    # Authenticate account (skip account list like the sample)
+                    acc_auth = ProtoOAAccountAuthReq()
+                    acc_auth.ctidTraderAccountId = self.account_id
+                    acc_auth.accessToken = self.access_token
+                    deferred = client.send(acc_auth)
+                    deferred.addCallbacks(account_auth_response_callback, on_error)
+                except Exception as e:
+                    logging.error(f"Error in app auth callback: {e}")
+                    on_error(e)
+            
+            def on_connect(client_obj):
+                """Handle connection - using deferred pattern like sample"""
+                try:
+                    logging.info("Connected to cTrader, starting authentication...")
+                    # Authenticate application (like the sample)
+                    app_auth = ProtoOAApplicationAuthReq()
+                    app_auth.clientId = self.client_id
+                    app_auth.clientSecret = self.client_secret
+                    deferred = client.send(app_auth)
+                    deferred.addCallbacks(application_auth_response_callback, on_error)
+                except Exception as e:
+                    logging.error(f"Error in on_connect: {e}")
+                    on_error(e)
+            
+            def on_disconnected(client_obj, reason):
+                """Handle disconnection"""
+                logging.warning(f"Disconnected: {reason}")
+                self._stop_reactor()
+            
+            # Set up callbacks (like the sample)
+            client.setConnectedCallback(on_connect)
+            client.setDisconnectedCallback(on_disconnected)
+            
+            # Start service and wait
+            client.startService()
+            
+            # Run reactor and wait for data
+            reactor_thread = self._run_reactor_in_thread()
+            reactor_thread.join(timeout=30)
+            
+            if error_occurred or not bars_data:
+                return pd.DataFrame()
+            
+            # Convert to DataFrame (prices already converted by dividing by 100000.0)
+            df = pd.DataFrame(bars_data)
+            
+            # Convert timestamp to datetime (timestamp is already in seconds from utcTimestampInMinutes * 60)
+            df['Date'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
+            df = df.set_index('Date')
+            
+            # Rename columns to match expected format
+            df = df.rename(columns={
+                'open': 'Open',
+                'high': 'High',
+                'low': 'Low',
+                'close': 'Close',
+                'volume': 'Volume'
+            })
+            
+            # Keep only OHLCV columns (already in correct format)
+            df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
+            
+            # Sort by date
+            df = df.sort_index()
+            
+            # Remove duplicates and missing values
+            df = df.dropna()
+            df = df[~df.index.duplicated(keep='first')]
+            
+            return df
+            
+        except Exception as e:
+            logging.error(f"Error fetching historical data for {symbol}: {e}")
+            return pd.DataFrame()
+    
+    def get_current_price(self, symbol: str) -> Optional[float]:
+        """
+        Get current price for a symbol
+        
+        Args:
+            symbol (str): Trading symbol (e.g., 'EURUSD')
+            
+        Returns:
+            float: Current price, or None if error
+        """
+        # For now, fetch recent data and return latest close
+        try:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=1)
+            
+            data = self.fetch_historical_data(
+                symbol=symbol,
+                start_date=start_date.strftime('%Y-%m-%d'),
+                end_date=end_date.strftime('%Y-%m-%d'),
+                interval='1m'
+            )
+            
+            if not data.empty:
+                return float(data['Close'].iloc[-1])
+            return None
         except Exception as e:
             logging.error(f"Error fetching current price for {symbol}: {e}")
             return None

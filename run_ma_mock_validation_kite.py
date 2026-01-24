@@ -68,13 +68,19 @@ DAYS_TO_VALIDATE = 30
 DEFAULT_START_DATE = (datetime.now() - timedelta(days=DAYS_TO_VALIDATE)).strftime("%Y-%m-%d")
 # use today's date
 DEFAULT_END_DATE = datetime.now().strftime("%Y-%m-%d")
+
+# # use 30 days ago (Kite uses YYYY-MM-DD format)
+# DEFAULT_START_DATE = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+# # use today's date
+# DEFAULT_END_DATE = (datetime.now() - timedelta(days=0)).strftime("%Y-%m-%d")
 DEFAULT_INTERVAL = "15m"  # Will be converted to "15minute" for Kite
 
-DEFAULT_VALIDATION_WINDOW_DAYS = 7  # How often to run validation (every N days)
+DEFAULT_VALIDATION_WINDOW_DAYS = 31  # How often to run validation (every N days)
 
 # Parameter ranges for validation optimization (matching run_ma_optimization_kite.py format)
-VALIDATION_SHORT_VAL = 11  # Center value for short window range
-VALIDATION_LONG_VAL = 20  # Center value for long window range
+VALIDATION_SHORT_VAL = 9 # Center value for short window range
+VALIDATION_LONG_VAL = 120  # Center value for long window range
+VALIDATION_RR_VAL = 6.0
 VALIDATION_RANGE = 4  # Range around center values
 VALIDATION_SHORT_START = max(VALIDATION_SHORT_VAL - VALIDATION_RANGE, 4)
 VALIDATION_SHORT_END = VALIDATION_SHORT_VAL + VALIDATION_RANGE
@@ -86,7 +92,7 @@ DEFAULT_VALIDATION_RR_RANGE = [6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]  # Risk-reward
 # ============================================================================
 
 DEFAULT_PARAMS = [
-    {"short_window": VALIDATION_SHORT_VAL, "long_window": VALIDATION_LONG_VAL, "risk_reward_ratio": 9.0}
+    {"short_window": VALIDATION_SHORT_VAL, "long_window": VALIDATION_LONG_VAL, "risk_reward_ratio": VALIDATION_RR_VAL}
 ]
 
 
@@ -185,28 +191,39 @@ def create_cumulative_pnl_chart(
     # Calculate cumulative PnL
     # Each trade's pnl is already a percentage return
     cumulative_pnl = []
+    cumulative_pnl_rupees = []  # Cumulative PnL in rupees
     cumulative_balance = []
+    trade_pnl_rupees = []  # Per-trade PnL in rupees
     running_balance = initial_balance
     
     for idx, trade in closed_trades.iterrows():
         # Get the PnL percentage for this trade
         trade_pnl_pct = trade['pnl']  # This is already a decimal (e.g., 0.05 for 5%)
         
-        # Calculate dollar profit/loss based on position size at entry
-        # The margin used determines how much of balance was at risk
-        leverage = trade.get('leverage', 1.0)
-        position_size = trade.get('position_size', trade.get('quantity', 0) * trade.get('entry_price', 0))
+        # Calculate rupee profit/loss based on position size at entry
+        # First try to use stored margin_used (most accurate)
+        margin_used = trade.get('margin_used')
         
-        if position_size > 0 and leverage > 0:
-            margin_used = position_size / leverage
+        if margin_used and margin_used > 0:
+            # Use stored margin_used if available (from Kite API for commodity futures)
             trade_profit = margin_used * trade_pnl_pct
         else:
-            # Fallback: use running balance with pnl percentage
-            trade_profit = running_balance * trade_pnl_pct
+            # Fallback: calculate margin from position size and leverage
+            leverage = trade.get('leverage', 1.0)
+            position_size = trade.get('position_size', trade.get('quantity', 0) * trade.get('entry_price', 0))
+            
+            if position_size > 0 and leverage > 0:
+                margin_used = position_size / leverage
+                trade_profit = margin_used * trade_pnl_pct
+            else:
+                # Final fallback: use running balance with pnl percentage
+                trade_profit = running_balance * trade_pnl_pct
         
         running_balance += trade_profit
         cumulative_balance.append(running_balance)
         cumulative_pnl.append((running_balance - initial_balance) / initial_balance * 100)
+        cumulative_pnl_rupees.append(running_balance - initial_balance)
+        trade_pnl_rupees.append(trade_profit)
     
     # Create the chart
     fig = make_subplots(
@@ -226,6 +243,7 @@ def create_cumulative_pnl_chart(
     # 1. Cumulative PnL line
     plot_times = [first_entry] + exit_times
     plot_pnls = [0] + cumulative_pnl
+    plot_pnls_rupees = [0] + cumulative_pnl_rupees
     
     # Color based on positive/negative
     colors_line = ['green' if p >= 0 else 'red' for p in plot_pnls]
@@ -238,7 +256,8 @@ def create_cumulative_pnl_chart(
             name='Cumulative PnL',
             line=dict(color='#2E86AB', width=3),
             marker=dict(size=8, color=colors_line, line=dict(width=1, color='white')),
-            hovertemplate='<b>Time:</b> %{x}<br><b>Cumulative PnL:</b> %{y:.2f}%<extra></extra>',
+            hovertemplate='<b>Time:</b> %{x}<br><b>Cumulative PnL:</b> %{y:.2f}% (₹%{customdata:.2f})<extra></extra>',
+            customdata=plot_pnls_rupees,
             fill='tozeroy',
             fillcolor='rgba(46, 134, 171, 0.2)'
         ),
@@ -257,7 +276,8 @@ def create_cumulative_pnl_chart(
             y=trade_pnls,
             name='Trade PnL',
             marker_color=bar_colors,
-            hovertemplate='<b>Exit:</b> %{x}<br><b>PnL:</b> %{y:.2f}%<extra></extra>',
+            hovertemplate='<b>Exit:</b> %{x}<br><b>PnL:</b> %{y:.2f}% (₹%{customdata:.2f})<extra></extra>',
+            customdata=trade_pnl_rupees,
             opacity=0.7
         ),
         row=2, col=1
@@ -268,6 +288,7 @@ def create_cumulative_pnl_chart(
     
     # Calculate summary stats
     final_pnl = cumulative_pnl[-1] if cumulative_pnl else 0
+    final_pnl_rupees = cumulative_pnl_rupees[-1] if cumulative_pnl_rupees else 0
     final_balance = cumulative_balance[-1] if cumulative_balance else initial_balance
     total_trades = len(closed_trades)
     winning_trades = len(closed_trades[closed_trades['pnl'] > 0])
@@ -291,7 +312,7 @@ def create_cumulative_pnl_chart(
     fig.update_layout(
         title=dict(
             text=f"📈 {symbol} MA Strategy - Cumulative PnL<br>"
-                 f"<sup>{params_str} | Final PnL: {final_pnl:+.2f}% | "
+                 f"<sup>{params_str} | Final PnL: {final_pnl:+.2f}% (₹{final_pnl_rupees:+,.2f}) | "
                  f"Trades: {total_trades} (W:{winning_trades}/L:{losing_trades}) | "
                  f"Win Rate: {win_rate:.1f}% | Max DD: {max_dd:.2f}%</sup>",
             font=dict(size=16)
@@ -828,7 +849,9 @@ def run_ma_mock(
         print(f"✅ Done. Final Balance: ${final_status['current_balance']:,.2f}")
         print(f"📋 Performance Metrics: {performance_metrics}")
         if "total_pnl" in performance_metrics:
-            print(f"📈 Total PnL: {performance_metrics['total_pnl']:.2%}")
+            # Calculate rupee PnL
+            total_pnl_rupees = final_status['current_balance'] - initial_balance
+            print(f"📈 Total PnL: {performance_metrics['total_pnl']:.2%} (₹{total_pnl_rupees:+,.2f})")
         if "win_rate" in performance_metrics:
             print(f"🎯 Win Rate: {performance_metrics['win_rate']:.2%}")
         if "sharpe_ratio" in performance_metrics:

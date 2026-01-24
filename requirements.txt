@@ -10,6 +10,9 @@ kiteconnect>=4.0.0
 # Binance API for cryptocurrency data
 python-binance>=1.0.19
 
+# cTrader Open API for forex data
+ctrader-open-api>=1.0.0
+
 # HTTP requests for automated authentication
 requests>=2.25.0
 

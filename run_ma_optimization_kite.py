@@ -57,11 +57,11 @@ def fetch_real_data(symbol="TATAMOTORS", days=30, interval="15m", exchange="NSE"
         # Calculate date range (Kite uses YYYY-MM-DD format)
         # Kite API's to_date needs to be tomorrow to get today's data (based on notebook example)
         # Use days parameter: end_date is tomorrow (to get data up to today), start_date is days ago
-        # end_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')  # Tomorrow (Kite API needs this to get today's data)
-        # start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')  # days ago (30 days ago for days=30)
+        end_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')  # Tomorrow (Kite API needs this to get today's data)
+        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')  # days ago (30 days ago for days=30)
         
-        end_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')  # Tomorrow (Kite API needs this to get today's data)
-        start_date = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d')  # days ago (30 days ago for days=30)
+        # end_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')  # Tomorrow (Kite API needs this to get today's data)
+        # start_date = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d')  # days ago (30 days ago for days=30)
         
 
         print(f"   From: {start_date}")
@@ -196,8 +196,8 @@ def main():
     # Define parameter ranges
     # short_window_range = [5, 10, 15, 20, 25, 30]
     # long_window_range = [20, 30, 40, 50, 60, 70]
-    SHORT_VAL = 10
-    LONG_VAL = 20
+    SHORT_VAL = 25
+    LONG_VAL = 70
     RANGE = 9
     # Ensure short_window_range max is less than long_window_range min to avoid invalid combinations
     short_start = max(SHORT_VAL - RANGE, 4)

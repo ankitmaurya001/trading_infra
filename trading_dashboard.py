@@ -1587,9 +1587,11 @@ def main():
                         st.write(f"{trade['pnl']:.2%}")
                     with col4:
                         # Show leverage and margin used
-                        leverage = trade.get('leverage', 1.0)
-                        position_size = trade.get('position_size', trade['quantity'] * trade['entry_price'])
-                        margin_used = trade.get('margin_used', position_size / leverage if leverage > 0 else position_size)
+                        leverage = trade.get('leverage', 1.0) or 1.0
+                        position_size = trade.get('position_size', trade['quantity'] * trade['entry_price']) or (trade['quantity'] * trade['entry_price'])
+                        margin_used = trade.get('margin_used')
+                        if margin_used is None or pd.isna(margin_used):
+                            margin_used = position_size / leverage if leverage > 0 else position_size
                         st.write(f"{leverage:.1f}x (₹{margin_used:,.0f})")
                     with col5:
                         # Format times
@@ -1602,9 +1604,11 @@ def main():
                         # Calculate dollar PnL
                         # PnL percentage is already calculated based on margin used
                         # So dollar PnL should be: pnl_percentage × margin_used
-                        leverage = trade.get('leverage', 1.0)
-                        position_size = trade.get('position_size', trade['quantity'] * trade['entry_price'])
-                        margin_used = trade.get('margin_used', position_size / leverage if leverage > 0 else position_size)
+                        leverage = trade.get('leverage', 1.0) or 1.0
+                        position_size = trade.get('position_size', trade['quantity'] * trade['entry_price']) or (trade['quantity'] * trade['entry_price'])
+                        margin_used = trade.get('margin_used')
+                        if margin_used is None or pd.isna(margin_used):
+                            margin_used = position_size / leverage if leverage > 0 else position_size
                         dollar_pnl = trade['pnl'] * margin_used
                         st.write(f"{trade_color} ₹{dollar_pnl:,.2f}")
         else:

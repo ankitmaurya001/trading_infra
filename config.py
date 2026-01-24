@@ -24,6 +24,17 @@ KITE_CREDENTIALS={"username":KITE_USERNAME,
 
 KITE_EXCHANGE = "MCX"
 
+
+## CTRADER credentials
+CTRADER_CLIENT_ID= '20436_XfBnDOVuDORCNCXau2WahPjjONgfd4pMNMGwbJ9ZWh4IxtCdr9'
+CTRADER_CLIENT_SECRET= 'cztAD4nKudES3BOa0QaXMvoX51YGXMr9ngPKLnLqIdeefkdRLB'
+# Run: python get_ctrader_token.py to get these values
+CTRADER_ACCESS_TOKEN = 'okvHKIQdNyFK9U-f-1MootGNSufiWxfQtLWO6Y5pVog'
+CTRADER_REFRESH_TOKEN = '0Wr5lzMaCUBZskLnNSYioN6fSkub23RUM8lZKWjoQoM'
+CTRADER_ACCOUNT_ID = 45921055  # Found using get_ctrader_accounts.py
+CTRADER_DEMO = False  # Your account (45921055) is a Live account
+
+
 # ============================================================================
 # MA Optimization - Neighborhood-Aware Scoring Configuration
 # ============================================================================

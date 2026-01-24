@@ -606,6 +606,10 @@ class TradingEngine:
         else:
             print(f"📊 ATR: ${current_atr:.2f}, Max Loss: {self.max_loss_percent}%")
         
+        # Always print stop loss and take profit levels
+        print(f"🛑 Stop Loss: ${stop_loss:.2f}")
+        print(f"🎯 Take Profit: ${take_profit:.2f}")
+        
         return trade
     
     def close_trades(self, strategy: BaseStrategy, position_type: str, price: float, timestamp: datetime, exit_type: str = None) -> List[Dict]:
@@ -633,15 +637,14 @@ class TradingEngine:
                     leverage = trade.get('effective_leverage', trade.get('leverage', 1.0))
                     position_size = trade.get('position_size', trade['quantity'] * trade['entry_price'])
                     
-                    # For commodity futures (Kite broker), use lot_size for PnL calculation
-                    # For other brokers, use quantity directly
+                    # For commodity futures (Kite broker), we use lot_size for PnL calculation.
+                    # For spot/FX/CFD-style trading, we use quantity directly (no concept of exchange lot_size).
                     # lot_size represents the contract size per lot (e.g., 250 MMBTU for NATGASMINI)
-                    # quantity represents number of lots (1 for commodity futures)
+                    # quantity represents number of units (FX/CFD) or number of lots (commodities).
                     lot_size_for_pnl = trade.get('lot_size')
                     quantity_for_pnl = trade.get('quantity', 1)
                     
                     print(f"🔍 PnL Calculation Debug:")
-                    print(f"   lot_size from trade: {lot_size_for_pnl}")
                     print(f"   quantity from trade: {quantity_for_pnl}")
                     print(f"   entry_price: {trade['entry_price']:.2f}")
                     print(f"   exit_price: {price:.2f}")
@@ -649,28 +652,29 @@ class TradingEngine:
                     if lot_size_for_pnl and lot_size_for_pnl > 0:
                         # Commodity futures: PnL = price_change × lot_size × quantity
                         # Since quantity is typically 1 for commodities, this simplifies to price_change × lot_size
+                        print(f"   lot_size from trade (commodity contract size): {lot_size_for_pnl}")
                         if trade['action'] == 'BUY':
                             # For LONG positions: profit = (current_price - entry_price) * lot_size * quantity
                             price_change = price - trade['entry_price']
                             dollar_pnl = price_change * lot_size_for_pnl * quantity_for_pnl
-                            print(f"   ✅ Using lot_size: PnL = ({price:.2f} - {trade['entry_price']:.2f}) × {lot_size_for_pnl} × {quantity_for_pnl} = {dollar_pnl:.2f}")
+                            print(f"   ✅ Commodity PnL: ({price:.2f} - {trade['entry_price']:.2f}) × {lot_size_for_pnl} × {quantity_for_pnl} = {dollar_pnl:.2f}")
                         else:
                             # For SHORT positions: profit = (entry_price - current_price) * lot_size * quantity
                             price_change = trade['entry_price'] - price
                             dollar_pnl = price_change * lot_size_for_pnl * quantity_for_pnl
-                            print(f"   ✅ Using lot_size: PnL = ({trade['entry_price']:.2f} - {price:.2f}) × {lot_size_for_pnl} × {quantity_for_pnl} = {dollar_pnl:.2f}")
+                            print(f"   ✅ Commodity PnL: ({trade['entry_price']:.2f} - {price:.2f}) × {lot_size_for_pnl} × {quantity_for_pnl} = {dollar_pnl:.2f}")
                     else:
-                        # For non-commodity brokers (e.g., Binance), quantity is already in base units
+                        # FX/spot/CFD-style: quantity is already in base units, so we ignore lot_size completely.
                         if trade['action'] == 'BUY':
-                            # For LONG positions: profit = (current_price - entry_price) * quantity
+                            # LONG FX: profit = (exit_price - entry_price) * quantity
                             price_change = price - trade['entry_price']
                             dollar_pnl = price_change * quantity_for_pnl
-                            print(f"   ⚠️  No lot_size found, using quantity only: PnL = ({price:.2f} - {trade['entry_price']:.2f}) × {quantity_for_pnl} = {dollar_pnl:.2f}")
+                            print(f"   ✅ FX/Spot PnL: ({price:.2f} - {trade['entry_price']:.2f}) × {quantity_for_pnl} = {dollar_pnl:.2f}")
                         else:
-                            # For SHORT positions: profit = (entry_price - current_price) * quantity
+                            # SHORT FX: profit = (entry_price - exit_price) * quantity
                             price_change = trade['entry_price'] - price
                             dollar_pnl = price_change * quantity_for_pnl
-                            print(f"   ⚠️  No lot_size found, using quantity only: PnL = ({trade['entry_price']:.2f} - {price:.2f}) × {quantity_for_pnl} = {dollar_pnl:.2f}")
+                            print(f"   ✅ FX/Spot PnL: ({trade['entry_price']:.2f} - {price:.2f}) × {quantity_for_pnl} = {dollar_pnl:.2f}")
                     
                     # Calculate percentage PnL based on ACTUAL margin used
                     # Use stored margin_used (from Kite API) if available, otherwise calculate
