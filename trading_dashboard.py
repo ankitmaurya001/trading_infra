@@ -237,6 +237,7 @@ class TradingDashboard:
         Process trade data to combine entry and exit records into single trade records.
         Each trade currently has two rows: one for entry (BUY/SELL) and one for exit (EXIT).
         This function combines them into one row per trade.
+        Rejected trades (status='rejected') are handled separately - they only have one record.
         """
         print(f"🔄 Processing trade data to combine entry/exit records...")
         
@@ -247,6 +248,36 @@ class TradingDashboard:
         processed_trades = []
         
         for trade_id, group in self.trade_history_df.groupby('trade_id'):
+            # Check if this is a rejected trade (status='rejected', only one record)
+            rejected_records = group[group['status'] == 'rejected']
+            if not rejected_records.empty:
+                # Handle rejected trades separately
+                rejected_record = rejected_records.iloc[0]
+                rejected_trade = {
+                    'trade_id': trade_id,
+                    'symbol': rejected_record['symbol'],
+                    'strategy': rejected_record['strategy'],
+                    'direction': 'LONG' if rejected_record['action'] == 'BUY' else 'SHORT',
+                    'entry_action': rejected_record['action'],
+                    'entry_time': rejected_record['timestamp'],
+                    'entry_price': rejected_record['price'],
+                    'quantity': rejected_record['quantity'],
+                    'leverage': rejected_record.get('leverage', 0.0),
+                    'position_size': rejected_record.get('position_size', 0.0),
+                    'margin_used': rejected_record.get('margin_used', None),
+                    'atr': rejected_record.get('atr', 0.0),
+                    'exit_time': None,  # No exit for rejected trades
+                    'exit_price': None,
+                    'exit_status': 'rejected',
+                    'pnl': 0.0,
+                    'balance': rejected_record.get('balance', self.status_data.get('current_balance', 0)),
+                    'reject_reason': rejected_record.get('reject_reason', 'Unknown reason')
+                }
+                processed_trades.append(rejected_trade)
+                print(f"   ⛔ Trade {trade_id} was rejected: {rejected_trade.get('reject_reason', 'Unknown')}")
+                continue
+            
+            # Handle normal trades (entry + exit)
             if len(group) < 2:
                 print(f"   ⚠️ Trade {trade_id} has only {len(group)} record(s), skipping")
                 continue
@@ -284,13 +315,16 @@ class TradingDashboard:
                 'exit_price': exit_record['price'],
                 'exit_status': exit_record['status'],
                 'pnl': exit_record['pnl'],
-                'balance': exit_record['balance']
+                'balance': exit_record['balance'],
+                'reject_reason': ''  # Normal trades don't have reject reason
             }
             
             processed_trades.append(combined_trade)
         
         processed_df = pd.DataFrame(processed_trades)
-        print(f"   ✅ Processed {len(processed_df)} complete trades from {len(self.trade_history_df)} records")
+        rejected_count = len(processed_df[processed_df['exit_status'] == 'rejected']) if not processed_df.empty else 0
+        completed_count = len(processed_df) - rejected_count
+        print(f"   ✅ Processed {completed_count} complete trades and {rejected_count} rejected trades from {len(self.trade_history_df)} records")
         
         return processed_df
 
@@ -351,8 +385,8 @@ class TradingDashboard:
         print(f"   Processed trades: {len(processed_trades)}")
         print(f"   Processed trade columns: {list(processed_trades.columns)}")
         
-        # Use processed trades for calculations
-        closed_trades = processed_trades  # All processed trades are closed trades
+        # Use processed trades for calculations - exclude rejected trades
+        closed_trades = processed_trades[processed_trades['exit_status'] != 'rejected'].copy()  # Exclude rejected trades
         
         if closed_trades.empty:
             print(f"   ❌ No closed trades found")
@@ -635,6 +669,7 @@ class TradingDashboard:
         """
         Display trade history with combined entry/exit records.
         This processes the raw trade data to show one row per complete trade.
+        Rejected trades are displayed separately with clear indicators.
         """
         print(f"📋 Displaying current trade history for {symbol}...")
         print(f"📋 Trade history shape: {trade_history_df.shape}")
@@ -651,68 +686,123 @@ class TradingDashboard:
                 st.info("No complete trades found. Trades need both entry and exit records.")
                 return
             
-            # Create a display-friendly version
-            display_df = processed_trades.copy()
+            # Separate rejected trades from completed trades
+            rejected_trades = processed_trades[processed_trades['exit_status'] == 'rejected'].copy()
+            completed_trades = processed_trades[processed_trades['exit_status'] != 'rejected'].copy()
             
-            # Format time columns
-            display_df['entry_time'] = pd.to_datetime(display_df['entry_time']).dt.strftime('%Y-%m-%d %H:%M')
-            display_df['exit_time'] = pd.to_datetime(display_df['exit_time']).dt.strftime('%Y-%m-%d %H:%M')
-            
-            # Add PnL percentage column
-            display_df['pnl_pct'] = (display_df['pnl'] * 100).round(2)
-            
-            # Add price change column
-            display_df['price_change'] = display_df['exit_price'] - display_df['entry_price']
-            display_df['price_change_pct'] = ((display_df['exit_price'] - display_df['entry_price']) / display_df['entry_price'] * 100).round(2)
-            
-            # Select and reorder columns for display
-            # Calculate margin_used if not present (fallback for older trades)
-            if 'margin_used' not in display_df.columns or display_df['margin_used'].isna().all():
-                display_df['margin_used'] = display_df['position_size'] / display_df['leverage']
-            else:
-                # Fill missing values with calculated margin
-                display_df['margin_used'] = display_df['margin_used'].fillna(
-                    display_df['position_size'] / display_df['leverage']
+            # Display rejected trades section if any exist
+            if not rejected_trades.empty:
+                st.markdown("### ⛔ Rejected Trades")
+                st.warning(f"**{len(rejected_trades)} trade(s) were rejected due to insufficient margin or other reasons.**")
+                
+                # Create display-friendly version for rejected trades
+                rejected_display = rejected_trades.copy()
+                
+                # Format time columns (handle None values)
+                rejected_display['entry_time'] = pd.to_datetime(rejected_display['entry_time']).dt.strftime('%Y-%m-%d %H:%M')
+                # Rejected trades don't have exit_time, so we don't need to format it
+                
+                # Select columns for rejected trades display
+                rejected_columns = [
+                    'trade_id', 'direction', 'strategy', 'entry_time', 'entry_price',
+                    'quantity', 'leverage', 'reject_reason'
+                ]
+                
+                # Ensure all columns exist
+                for col in rejected_columns:
+                    if col not in rejected_display.columns:
+                        rejected_display[col] = 'N/A'
+                
+                rejected_display = rejected_display[rejected_columns]
+                
+                # Rename columns for better display
+                rejected_display.columns = [
+                    'Trade ID', 'Direction', 'Strategy', 'Entry Time', 'Entry Price',
+                    'Quantity', 'Leverage', 'Rejection Reason'
+                ]
+                
+                # Style rejected trades with red background
+                def style_rejected(row):
+                    return ['background-color: #ffcccc; color: #cc0000; font-weight: bold'] * len(row)
+                
+                styled_rejected = rejected_display.style.apply(style_rejected, axis=1)
+                
+                st.dataframe(
+                    styled_rejected,
+                    use_container_width=True,
+                    hide_index=True
                 )
+                
+                st.markdown("---")
             
-            display_columns = [
-                'trade_id', 'direction', 'strategy', 'entry_time', 'exit_time',
-                'entry_price', 'exit_price', 'price_change', 'price_change_pct',
-                'quantity', 'leverage', 'margin_used', 'atr', 'pnl', 'pnl_pct', 'exit_status'
-            ]
+            # Display completed trades
+            if not completed_trades.empty:
+                st.markdown("### ✅ Completed Trades")
+                
+                # Create a display-friendly version
+                display_df = completed_trades.copy()
+                
+                # Format time columns
+                display_df['entry_time'] = pd.to_datetime(display_df['entry_time']).dt.strftime('%Y-%m-%d %H:%M')
+                display_df['exit_time'] = pd.to_datetime(display_df['exit_time']).dt.strftime('%Y-%m-%d %H:%M')
+                
+                # Add PnL percentage column
+                display_df['pnl_pct'] = (display_df['pnl'] * 100).round(2)
+                
+                # Add price change column
+                display_df['price_change'] = display_df['exit_price'] - display_df['entry_price']
+                display_df['price_change_pct'] = ((display_df['exit_price'] - display_df['entry_price']) / display_df['entry_price'] * 100).round(2)
+                
+                # Select and reorder columns for display
+                # Calculate margin_used if not present (fallback for older trades)
+                if 'margin_used' not in display_df.columns or display_df['margin_used'].isna().all():
+                    display_df['margin_used'] = display_df['position_size'] / display_df['leverage']
+                else:
+                    # Fill missing values with calculated margin
+                    display_df['margin_used'] = display_df['margin_used'].fillna(
+                        display_df['position_size'] / display_df['leverage']
+                    )
+                
+                display_columns = [
+                    'trade_id', 'direction', 'strategy', 'entry_time', 'exit_time',
+                    'entry_price', 'exit_price', 'price_change', 'price_change_pct',
+                    'quantity', 'leverage', 'margin_used', 'atr', 'pnl', 'pnl_pct', 'exit_status'
+                ]
+                
+                display_df = display_df[display_columns]
+                
+                # Rename columns for better display
+                display_df.columns = [
+                    'Trade ID', 'Direction', 'Strategy', 'Entry Time', 'Exit Time',
+                    'Entry Price', 'Exit Price', 'Price Change', 'Price Change %',
+                    'Quantity', 'Leverage', 'Margin Used', 'ATR', 'PnL', 'PnL %', 'Exit Status'
+                ]
+                
+                # Color code PnL
+                def color_pnl(val):
+                    if val > 0:
+                        return 'color: green; font-weight: bold'
+                    elif val < 0:
+                        return 'color: red; font-weight: bold'
+                    return 'color: black'
+                
+                # Apply styling to PnL columns
+                styled_df = display_df.style.map(color_pnl, subset=['PnL %'])
+                
+                print(f"📋 Rendering processed trade history dataframe...")
+                st.dataframe(
+                    styled_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info("No completed trades yet.")
             
-            display_df = display_df[display_columns]
-            
-            # Rename columns for better display
-            display_df.columns = [
-                'Trade ID', 'Direction', 'Strategy', 'Entry Time', 'Exit Time',
-                'Entry Price', 'Exit Price', 'Price Change', 'Price Change %',
-                'Quantity', 'Leverage', 'Margin Used', 'ATR', 'PnL', 'PnL %', 'Exit Status'
-            ]
-            
-            # Color code PnL
-            def color_pnl(val):
-                if val > 0:
-                    return 'color: green; font-weight: bold'
-                elif val < 0:
-                    return 'color: red; font-weight: bold'
-                return 'color: black'
-            
-            # Apply styling to PnL columns
-            styled_df = display_df.style.map(color_pnl, subset=['PnL %'])
-            
-            print(f"📋 Rendering processed trade history dataframe...")
-            st.dataframe(
-                styled_df,
-                use_container_width=True,
-                hide_index=True
-            )
-            
-            # Download trade history
+            # Download trade history (including rejected trades)
             print(f"📋 Creating download button...")
             csv = processed_trades.to_csv(index=False)
             st.download_button(
-                label="📥 Download Trade History",
+                label="📥 Download Trade History (Including Rejected)",
                 data=csv,
                 file_name=f"trade_history_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv"
@@ -1088,6 +1178,15 @@ def main():
         print(f"📊 Displaying trading status...")
         # Pass None for simulator since we don't have a simulator object
         display_trading_status(status, None)
+        
+        # Add rejected trades indicator if any exist
+        trade_history = dashboard.get_trade_history_df()
+        if not trade_history.empty:
+            processed_trades = dashboard.process_trade_data()
+            if not processed_trades.empty:
+                rejected_count = len(processed_trades[processed_trades['exit_status'] == 'rejected'])
+                if rejected_count > 0:
+                    st.warning(f"⛔ **{rejected_count} trade(s) rejected** due to insufficient margin or other reasons. Check Trade History section for details.")
         
         # Last update with refresh indicator
         if status.get('last_update'):

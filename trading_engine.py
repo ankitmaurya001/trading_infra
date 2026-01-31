@@ -93,7 +93,7 @@ class TradingEngine:
         # Initialize trade log
         trade_log_df = pd.DataFrame(columns=[
             'timestamp', 'symbol', 'strategy', 'action', 'price', 'quantity', 
-            'leverage', 'position_size', 'atr', 'balance', 'pnl', 'trade_id', 'status'
+            'leverage', 'position_size', 'atr', 'balance', 'pnl', 'trade_id', 'status', 'reject_reason'
         ])
         trade_log_df.to_csv(self.trade_log_file, index=False)
         
@@ -1138,7 +1138,8 @@ class TradingEngine:
                 'balance': self.current_balance,
                 'pnl': trade.get('pnl', 0),
                 'trade_id': trade['id'],
-                'status': trade['status']
+                'status': trade['status'],
+                'reject_reason': trade.get('reject_reason', '')
             }
             
             # Append to CSV
