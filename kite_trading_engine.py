@@ -649,13 +649,25 @@ class KiteTradingEngine:
                         hours_until = time_until_open.total_seconds() / 3600
                         if hours_until > 1:
                             self.logger.info(f"🌙 Market is closed. Next open in {hours_until:.1f} hours. Waiting...")
-                            # Sleep for 1 hour or until market opens, whichever is shorter
-                            sleep_time = min(3600, time_until_open.total_seconds())
-                            time.sleep(sleep_time)
+                            # Sleep in smaller chunks (5 minutes) to check for flag file changes
+                            # This allows weekend trading flag to be picked up quickly
+                            chunk_sleep = 300  # 5 minutes
+                            total_sleep = min(3600, time_until_open.total_seconds())
+                            slept = 0
+                            while slept < total_sleep and self.is_running:
+                                time.sleep(min(chunk_sleep, total_sleep - slept))
+                                slept += chunk_sleep
+                                # Re-check market status (flag file might have been created)
+                                if self._is_market_open():
+                                    self.logger.info("📅 Weekend trading flag detected! Market check passed.")
+                                    break
                         else:
                             # Less than 1 hour, sleep for 5 minutes and check again
                             self.logger.info(f"🌙 Market is closed. Next open in {time_until_open}. Waiting 5 minutes...")
                             time.sleep(300)
+                            # Re-check market status after sleep
+                            if self._is_market_open():
+                                self.logger.info("📅 Weekend trading flag detected! Market check passed.")
                     else:
                         # Shouldn't happen, but sleep anyway
                         self.logger.warning("⚠️  Market status check failed. Waiting 5 minutes...")
