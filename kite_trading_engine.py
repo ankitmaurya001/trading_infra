@@ -53,6 +53,10 @@ class KiteTradingEngine:
         # Check if live trading is enabled (default: False for safety)
         self.live_trading = self.config.get('live_trading', False)
         
+        # Weekend trading flag file - if this file exists, allow weekend trading
+        # Place this file in the project root to enable weekend trading
+        self.weekend_trading_flag_file = "allow_weekend_trading.flag"
+        
         # Initialize data fetcher and authenticate first (needed for margin check)
         self.data_fetcher = KiteDataFetcher(
             cfg.KITE_CREDENTIALS, 
@@ -339,6 +343,8 @@ class KiteTradingEngine:
     def _is_market_open(self) -> bool:
         """
         Check if the market is currently open based on exchange type.
+        If allow_weekend_trading.flag file exists, allows weekend trading.
+        Otherwise, respects weekend restrictions.
         
         Returns:
             bool: True if market is open, False otherwise
@@ -349,17 +355,24 @@ class KiteTradingEngine:
             current_time = ist_now.time()
             current_weekday = ist_now.weekday()  # 0=Monday, 6=Sunday
             
+            # Check if weekend trading is enabled via flag file
+            allow_weekend_trading = os.path.exists(self.weekend_trading_flag_file)
+            
             # Check if it's a weekday (Monday=0 to Friday=4)
+            # Skip weekend check if flag file exists
             if current_weekday >= 5:  # Saturday or Sunday
-                return False
+                if not allow_weekend_trading:
+                    return False
+                else:
+                    self.logger.info(f"📅 Weekend trading enabled (flag file present) - Day: {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][current_weekday]}")
             
             # Define market hours based on exchange
             if self.exchange == "MCX":
-                # MCX: 9:00 AM to 11:55 PM IST (weekdays)
+                # MCX: 9:00 AM to 11:55 PM IST
                 market_open = datetime.strptime("09:00", "%H:%M").time()
                 market_close = datetime.strptime("23:55", "%H:%M").time()
             elif self.exchange in ["NSE", "BSE"]:
-                # NSE/BSE: 9:15 AM to 3:30 PM IST (weekdays)
+                # NSE/BSE: 9:15 AM to 3:30 PM IST
                 market_open = datetime.strptime("09:15", "%H:%M").time()
                 market_close = datetime.strptime("15:30", "%H:%M").time()
             else:
@@ -380,6 +393,7 @@ class KiteTradingEngine:
     def _get_time_until_market_open(self) -> Optional[timedelta]:
         """
         Calculate time until market opens next.
+        Respects weekend trading flag file.
         
         Returns:
             timedelta: Time until market opens, or None if market is already open
@@ -392,6 +406,9 @@ class KiteTradingEngine:
             current_time = ist_now.time()
             current_weekday = ist_now.weekday()
             
+            # Check if weekend trading is enabled
+            allow_weekend_trading = os.path.exists(self.weekend_trading_flag_file)
+            
             # Define market hours based on exchange
             if self.exchange == "MCX":
                 market_open_time = datetime.strptime("09:00", "%H:%M").time()
@@ -401,7 +418,7 @@ class KiteTradingEngine:
                 market_open_time = datetime.strptime("09:15", "%H:%M").time()
             
             # Calculate next market open time
-            if current_weekday >= 5:  # Weekend
+            if current_weekday >= 5 and not allow_weekend_trading:  # Weekend and flag not present
                 # Next Monday
                 days_until_monday = (7 - current_weekday) % 7
                 if days_until_monday == 0:
@@ -417,7 +434,7 @@ class KiteTradingEngine:
                                           second=0, 
                                           microsecond=0) + timedelta(days=1)
             else:
-                # Market opens today
+                # Market opens today (could be weekend if flag is present)
                 next_open = ist_now.replace(hour=market_open_time.hour, 
                                           minute=market_open_time.minute, 
                                           second=0, 
@@ -565,6 +582,12 @@ class KiteTradingEngine:
             self.logger.info(f"   - No orders placed on exchange")
         self.logger.info(f"🎯 Active Strategies: {[s.name for s in self.strategy_manager.get_strategies()]}")
         self.logger.info(f"💰 Initial Balance: ${self.trading_engine.initial_balance:,.2f}")
+        
+        # Log weekend trading status
+        if os.path.exists(self.weekend_trading_flag_file):
+            self.logger.info(f"📅 Weekend trading: ENABLED (flag file: {self.weekend_trading_flag_file})")
+        else:
+            self.logger.info(f"📅 Weekend trading: DISABLED (create '{self.weekend_trading_flag_file}' to enable)")
         
         # Start margin monitoring thread (if enabled)
         if self.enable_margin_monitoring:
