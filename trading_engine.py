@@ -30,12 +30,13 @@ class TradingEngine:
     """
     
     def __init__(self, initial_balance: float = 10000, max_leverage: float = 10.0, max_loss_percent: float = 2.0, 
-                 atr_buffer_percent: float = 0.0):
+                 atr_buffer_percent: float = 0.0, margin_buffer_percent: float = 20.0):
         self.initial_balance = initial_balance
         self.current_balance = initial_balance
         self.max_leverage = max_leverage
         self.max_loss_percent = max_loss_percent
         self.atr_buffer_percent = atr_buffer_percent  # Buffer to widen SL/TP (e.g., 20 = 20% wider)
+        self.margin_buffer_percent = margin_buffer_percent  # Buffer for margin requirement check (e.g., 20 = 20% extra margin required)
         self.trade_history = []
         self.active_trades = []
         self.session_id = None
@@ -323,8 +324,7 @@ class TradingEngine:
                     # Check margin with buffer
                     margins = self.broker.check_margins()
                     available_margin = margins.get('available', 0.0)
-                    margin_buffer_percent = 20  # Default 20% buffer
-                    required_with_buffer = actual_lot_margin * (1 + margin_buffer_percent / 100)
+                    required_with_buffer = actual_lot_margin * (1 + self.margin_buffer_percent / 100)
                     
                     if available_margin < required_with_buffer:
                         reason = f"Insufficient margin: {available_margin:.2f} < {required_with_buffer:.2f} (required: {actual_lot_margin:.2f})"
@@ -347,7 +347,7 @@ class TradingEngine:
                         self._log_trade(rejection, price, timestamp)
                         return rejection
                     else:
-                        print(f"✅ Margin check passed: {available_margin:.2f} >= {required_with_buffer:.2f} (actual margin: {actual_lot_margin:.2f})")
+                        print(f"✅ Margin check passed: {available_margin:.2f} >= {required_with_buffer:.2f} (actual margin: {actual_lot_margin:.2f}, buffer: {self.margin_buffer_percent}%)")
             except Exception as e:
                 print(f"⚠️  Margin check failed: {e}. Proceeding with trade...")
                 import traceback

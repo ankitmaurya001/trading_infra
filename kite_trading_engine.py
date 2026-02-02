@@ -98,11 +98,15 @@ class KiteTradingEngine:
         
         # Initialize components with actual balance
         self.strategy_manager = StrategyManager()
+        # Read margin_buffer_percent from commodity_trading section or top-level, default to 20
+        commodity_config = self.config.get('commodity_trading', {})
+        margin_buffer_percent = commodity_config.get('margin_buffer_percent') or self.config.get('margin_buffer_percent', 20.0)
         self.trading_engine = TradingEngine(
             initial_balance=initial_balance,
             max_leverage=self.config.get('max_leverage', 10.0),
             max_loss_percent=self.config.get('max_loss_percent', 2.0),
-            atr_buffer_percent=self.config.get('atr_buffer_percent', 0.0)
+            atr_buffer_percent=self.config.get('atr_buffer_percent', 0.0),
+            margin_buffer_percent=margin_buffer_percent
         )
         
         # Store lot margin in trading engine for proper position sizing
