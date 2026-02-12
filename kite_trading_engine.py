@@ -755,9 +755,10 @@ class KiteTradingEngine:
                         # Check take-profit for open positions (after strategy processing)
                         self._check_take_profit(data, current_time)
                         # Check stop-loss for open positions using candle-close prices.
-                        # This is used when we are not relying on broker-side GTT SLs
-                        # (or even in virtual mode) to provide consistent SL behaviour.
-                        self._check_stop_loss(data, current_time)
+                        # Only check if GTT is disabled - if GTT is enabled, the broker handles SL.
+                        # This provides consistent SL behaviour when not using GTT.
+                        if not self.use_gtt_for_stop_loss:
+                            self._check_stop_loss(data, current_time)
                         
                         # Update the last processed timestamp
                         self.last_processed_timestamp = latest_data_timestamp
