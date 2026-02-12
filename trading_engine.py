@@ -41,6 +41,9 @@ class TradingEngine:
         self.active_trades = []
         self.session_id = None
         self.symbol = None
+        # Whether to use broker-side stop loss (e.g. Kite GTT) or engine-managed SL.
+        # Trading engines that support config (like KiteTradingEngine) can override this.
+        self.use_gtt_for_stop_loss: bool = True
         
         # Optional external broker for real execution
         self.broker = None
@@ -493,9 +496,12 @@ class TradingEngine:
                 order_id = broker_order.get('orderId') or broker_order.get('order_id')
                 print(f"[Broker] Entry order placed: {order_id}")
                 
-                # For Kite broker, use GTT for stop-loss (persists overnight)
-                # For other brokers, use regular stop-loss order
-                if is_kite_broker:
+                # For Kite broker, by default use GTT for stop-loss (persists overnight).
+                # This can be disabled by setting self.use_gtt_for_stop_loss = False,
+                # in which case the engine will manage stop-loss exits itself by
+                # monitoring prices and sending MARKET exits when SL is hit.
+                # For other brokers, use regular stop-loss order.
+                if is_kite_broker and getattr(self, "use_gtt_for_stop_loss", True):
                     # Determine transaction type for GTT
                     gtt_transaction_type = 'SELL' if position_type.name == 'LONG' else 'BUY'
                     
@@ -724,12 +730,15 @@ class TradingEngine:
                                 else:
                                     print(f"[Broker] Failed to cancel stop-loss order: {cancel_e}")
                         
-                        # Now handle the exit order based on exit type
-                        if exit_status == "sl_hit":
-                            # Stop-loss was hit - broker already closed position (GTT triggered)
-                            print(f"[Broker] Stop-loss hit detected - position already closed by exchange")
+                        # Now handle the exit order based on exit type.
+                        # If a GTT stop-loss actually triggered on a Kite broker (trade has gtt_id
+                        # and exit_status == 'sl_hit'), the position is already closed on the exchange
+                        # and we MUST NOT send another exit order.
+                        if exit_status == "sl_hit" and is_kite_broker and trade.get('gtt_id'):
+                            print(f"[Broker] Stop-loss hit detected via GTT - position already closed by exchange")
                         else:
-                            # Take-profit hit, manual exit, or any other exit - place market order
+                            # Take-profit hit, engine-managed stop-loss, manual exit, or any other exit
+                            # → place a MARKET order to close the position.
                             try:
                                 exit_side = 'SELL' if trade['action'] == 'BUY' else 'BUY'
                                 # For Kite broker, use 1 lot; for others, use trade quantity

@@ -1575,27 +1575,47 @@ def main():
             with col2:
                 st.metric("Action", trade_info['action'])
             with col3:
-                st.metric("Entry Price", f"${trade_info['entry_price']:.2f}")
+                entry_price = trade_info.get('entry_price')
+                if entry_price is not None and not pd.isna(entry_price):
+                    st.metric("Entry Price", f"${entry_price:.2f}")
+                else:
+                    st.metric("Entry Price", "N/A")
             with col4:
-                st.metric("Quantity", f"{trade_info['quantity']:.4f}")
+                quantity = trade_info.get('quantity')
+                if quantity is not None and not pd.isna(quantity):
+                    st.metric("Quantity", f"{quantity:.4f}")
+                else:
+                    st.metric("Quantity", "N/A")
             with col5:
                 atr_val = trade_info.get('atr', None)
-                st.metric("ATR (entry)", f"{atr_val:.4f}" if atr_val is not None else "N/A")
+                if atr_val is not None and not pd.isna(atr_val):
+                    st.metric("ATR (entry)", f"{atr_val:.4f}")
+                else:
+                    st.metric("ATR (entry)", "N/A")
             
             # Calculate current PnL if we have current data
             if not market_data.empty:
                 current_price = market_data['Close'].iloc[-1]
-                if trade_info['action'] == 'BUY':
-                    current_pnl = (current_price - trade_info['entry_price']) / trade_info['entry_price']
-                else:  # SELL (short)
-                    current_pnl = (trade_info['entry_price'] - current_price) / trade_info['entry_price']
-                
-                st.metric(
-                    "Current PnL",
-                    f"{current_pnl:.2%}",
-                    f"${current_price:.2f}",
-                    delta_color="normal"
-                )
+                entry_price = trade_info.get('entry_price')
+                if entry_price is not None and not pd.isna(entry_price) and entry_price != 0:
+                    if trade_info['action'] == 'BUY':
+                        current_pnl = (current_price - entry_price) / entry_price
+                    else:  # SELL (short)
+                        current_pnl = (entry_price - current_price) / entry_price
+                    
+                    st.metric(
+                        "Current PnL",
+                        f"{current_pnl:.2%}",
+                        f"${current_price:.2f}",
+                        delta_color="normal"
+                    )
+                else:
+                    st.metric(
+                        "Current PnL",
+                        "N/A",
+                        f"${current_price:.2f}",
+                        delta_color="normal"
+                    )
     
     # Decision Log Viewer
     print(f"🎯 Getting decision log...")
@@ -1668,7 +1688,9 @@ def main():
         
         # Use processed trade data for recent trades
         processed_trades = dashboard.process_trade_data()
-        recent_trades = processed_trades.tail(10) if not processed_trades.empty else pd.DataFrame()
+        # Filter out rejected trades for recent trades display (they don't have exit prices/times)
+        completed_trades = processed_trades[processed_trades['exit_status'] != 'rejected'].copy() if not processed_trades.empty else pd.DataFrame()
+        recent_trades = completed_trades.tail(10) if not completed_trades.empty else pd.DataFrame()
         
         if not recent_trades.empty:
             # Display recent trades in a more visual way
@@ -1681,34 +1703,73 @@ def main():
                     with col1:
                         st.write(f"{trade_direction} {trade['strategy']}")
                     with col2:
-                        st.write(f"${trade['entry_price']:.2f} → ${trade['exit_price']:.2f}")
+                        # Handle None and NaN values safely
+                        entry_price = trade.get('entry_price')
+                        exit_price = trade.get('exit_price')
+                        # Check for both None and NaN values
+                        entry_valid = entry_price is not None and not pd.isna(entry_price)
+                        exit_valid = exit_price is not None and not pd.isna(exit_price)
+                        if entry_valid and exit_valid:
+                            st.write(f"${entry_price:.2f} → ${exit_price:.2f}")
+                        elif entry_valid:
+                            st.write(f"${entry_price:.2f} → N/A")
+                        else:
+                            st.write("N/A")
                     with col3:
-                        st.write(f"{trade['pnl']:.2%}")
+                        pnl = trade.get('pnl', 0)
+                        if pnl is not None and not pd.isna(pnl):
+                            st.write(f"{pnl:.2%}")
+                        else:
+                            st.write("N/A")
                     with col4:
                         # Show leverage and margin used
                         leverage = trade.get('leverage', 1.0) or 1.0
-                        position_size = trade.get('position_size', trade['quantity'] * trade['entry_price']) or (trade['quantity'] * trade['entry_price'])
+                        entry_price = trade.get('entry_price')
+                        entry_price_valid = entry_price is not None and not pd.isna(entry_price)
+                        if entry_price_valid:
+                            position_size = trade.get('position_size', trade['quantity'] * entry_price)
+                        else:
+                            position_size = trade.get('position_size', 0)
                         margin_used = trade.get('margin_used')
                         if margin_used is None or pd.isna(margin_used):
                             margin_used = position_size / leverage if leverage > 0 else position_size
                         st.write(f"{leverage:.1f}x (₹{margin_used:,.0f})")
                     with col5:
-                        # Format times
-                        entry_time = pd.to_datetime(trade['entry_time'])
-                        exit_time = pd.to_datetime(trade['exit_time'])
-                        entry_str = entry_time.strftime('%m/%d %H:%M')
-                        exit_str = exit_time.strftime('%m/%d %H:%M')
-                        st.write(f"{entry_str} → {exit_str}")
+                        # Format times - handle None and NaN values
+                        entry_time = trade.get('entry_time')
+                        exit_time = trade.get('exit_time')
+                        entry_time_valid = entry_time is not None and not pd.isna(entry_time)
+                        exit_time_valid = exit_time is not None and not pd.isna(exit_time)
+                        if entry_time_valid and exit_time_valid:
+                            entry_time = pd.to_datetime(entry_time)
+                            exit_time = pd.to_datetime(exit_time)
+                            entry_str = entry_time.strftime('%m/%d %H:%M')
+                            exit_str = exit_time.strftime('%m/%d %H:%M')
+                            st.write(f"{entry_str} → {exit_str}")
+                        elif entry_time_valid:
+                            entry_time = pd.to_datetime(entry_time)
+                            entry_str = entry_time.strftime('%m/%d %H:%M')
+                            st.write(f"{entry_str} → N/A")
+                        else:
+                            st.write("N/A")
                     with col6:
                         # Calculate dollar PnL
                         # PnL percentage is already calculated based on margin used
                         # So dollar PnL should be: pnl_percentage × margin_used
                         leverage = trade.get('leverage', 1.0) or 1.0
-                        position_size = trade.get('position_size', trade['quantity'] * trade['entry_price']) or (trade['quantity'] * trade['entry_price'])
+                        entry_price = trade.get('entry_price')
+                        entry_price_valid = entry_price is not None and not pd.isna(entry_price)
+                        if entry_price_valid:
+                            position_size = trade.get('position_size', trade['quantity'] * entry_price)
+                        else:
+                            position_size = trade.get('position_size', 0)
                         margin_used = trade.get('margin_used')
                         if margin_used is None or pd.isna(margin_used):
                             margin_used = position_size / leverage if leverage > 0 else position_size
-                        dollar_pnl = trade['pnl'] * margin_used
+                        pnl = trade.get('pnl', 0) or 0
+                        if pnl is None or pd.isna(pnl):
+                            pnl = 0
+                        dollar_pnl = pnl * margin_used
                         st.write(f"{trade_color} ₹{dollar_pnl:,.2f}")
         else:
             st.info("No closed trades yet. Performance metrics will appear here once trades are executed.")

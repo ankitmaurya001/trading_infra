@@ -123,8 +123,16 @@ class KiteTradingEngine:
         self.margin_check_interval = commodity_config.get('margin_check_interval_seconds', 300)
         self.margin_alert_threshold = commodity_config.get('margin_alert_threshold_percent', 150)
         self.margin_critical_threshold = commodity_config.get('margin_critical_threshold_percent', 110)
+        # If False, we will NOT place broker-side GTT stop-loss orders. Instead, the
+        # engine will continuously monitor candle closes and send MARKET exits when
+        # price crosses the stop-loss level (similar to how take-profit is handled).
         self.use_gtt_for_stop_loss = commodity_config.get('use_gtt_for_stop_loss', True)
         self.enable_margin_monitoring = commodity_config.get('enable_margin_monitoring', True)  # Can be disabled for testing
+        
+        # Propagate SL handling preference to the core trading engine so that
+        # execute_trade() knows whether to place GTT stop-loss orders or rely
+        # entirely on engine-managed stop-loss exits.
+        self.trading_engine.use_gtt_for_stop_loss = self.use_gtt_for_stop_loss
         
         # Margin monitoring state
         self.margin_monitor_thread = None
@@ -746,6 +754,10 @@ class KiteTradingEngine:
                         
                         # Check take-profit for open positions (after strategy processing)
                         self._check_take_profit(data, current_time)
+                        # Check stop-loss for open positions using candle-close prices.
+                        # This is used when we are not relying on broker-side GTT SLs
+                        # (or even in virtual mode) to provide consistent SL behaviour.
+                        self._check_stop_loss(data, current_time)
                         
                         # Update the last processed timestamp
                         self.last_processed_timestamp = latest_data_timestamp
@@ -873,6 +885,68 @@ class KiteTradingEngine:
                 
                 if closed_trades:
                     self.logger.info(f"✅ Position closed (TP hit): {closed_trades[0].get('status', 'closed')}")
+    
+    def _check_stop_loss(self, data: pd.DataFrame, current_time: datetime):
+        """
+        Check stop-loss levels for open positions when a candle closes.
+        This mirrors the take-profit handling but uses the configured stop_loss
+        level instead of take_profit. When a stop-loss is hit, we close the
+        position via the core trading engine, which for live trading will place
+        a MARKET exit order (unless the position was already closed by a GTT).
+        
+        Args:
+            data: Latest market data
+            current_time: Current timestamp
+        """
+        if data.empty:
+            return
+        
+        # Get current price from latest candle close
+        current_price = float(data['Close'].iloc[-1])
+        
+        # Check all open positions
+        for trade in self.trading_engine.active_trades[:]:  # Copy list to avoid modification during iteration
+            if trade.get('status') != 'open':
+                continue
+            
+            stop_loss = trade.get('stop_loss')
+            if stop_loss is None:
+                continue
+            
+            # Determine position type
+            is_long = trade.get('action') == 'BUY'
+            
+            # Check if stop-loss is hit (on candle close)
+            sl_hit = False
+            if is_long:
+                # LONG position: stop-loss hit if current_price <= stop_loss
+                sl_hit = current_price <= stop_loss
+            else:
+                # SHORT position: stop-loss hit if current_price >= stop_loss
+                sl_hit = current_price >= stop_loss
+            
+            if sl_hit:
+                self.logger.info(
+                    f"🛑 Stop-loss hit for trade {trade['id']}: "
+                    f"{trade['action']} @ {current_price:.2f} (SL: {stop_loss:.2f})"
+                )
+                
+                # Close the position - pass exit_type='sl_hit'. In engine-managed SL
+                # mode there is no GTT ID on the trade, so TradingEngine.close_trades()
+                # will still send a MARKET exit order to the broker.
+                position_type = 'LONG' if is_long else 'SHORT'
+                closed_trades = self.trading_engine.close_trades(
+                    strategy=self.strategy_manager.get_strategy_by_name(trade['strategy']),
+                    position_type=position_type,
+                    price=current_price,
+                    timestamp=current_time,
+                    exit_type='sl_hit'
+                )
+                
+                if closed_trades:
+                    self.logger.info(
+                        f"✅ Position closed (SL hit): {closed_trades[0].get('status', 'closed')}"
+                    )
     
     def _sync_positions_with_broker(self, current_time: datetime):
         """
