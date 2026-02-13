@@ -501,11 +501,12 @@ class TradingEngine:
                 # in which case the engine will manage stop-loss exits itself by
                 # monitoring prices and sending MARKET exits when SL is hit.
                 # For other brokers, use regular stop-loss order.
-                if is_kite_broker and getattr(self, "use_gtt_for_stop_loss", True):
-                    # Determine transaction type for GTT
+                use_gtt = getattr(self, "use_gtt_for_stop_loss", True)
+                
+                if is_kite_broker and use_gtt:
+                    # Kite broker with GTT enabled - place GTT stop-loss order
                     gtt_transaction_type = 'SELL' if position_type.name == 'LONG' else 'BUY'
                     
-                    # Place GTT stop-loss order
                     gtt_order = self.broker.place_gtt_order(
                         symbol=self.symbol,
                         trigger_price=stop_loss,
@@ -517,8 +518,13 @@ class TradingEngine:
                     gtt_id = gtt_order.get('gtt_id') or gtt_order.get('trigger_id')
                     print(f"[Broker] GTT stop-loss order placed: {gtt_id} at ${stop_loss:.2f}")
                     stop_loss_order = gtt_order  # Store GTT order as stop_loss_order for compatibility
+                elif is_kite_broker and not use_gtt:
+                    # Kite broker with GTT disabled - NO stop-loss order placed
+                    # Engine will monitor prices and send MARKET exit when SL is hit
+                    print(f"[Broker] GTT stop-loss DISABLED - engine will monitor candle closes and exit at ${stop_loss:.2f}")
+                    stop_loss_order = None
                 else:
-                    # Place regular stop-loss order for non-Kite brokers
+                    # Non-Kite brokers - place regular stop-loss order
                     stop_side = 'SELL' if position_type.name == 'LONG' else 'BUY'
                     stop_loss_order = self.broker.place_order(
                         symbol=self.symbol,

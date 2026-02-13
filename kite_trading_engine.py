@@ -954,10 +954,18 @@ class KiteTradingEngine:
         Sync positions with broker to detect if any GTT stop-loss orders were triggered.
         This handles the case where the exchange closes a position via GTT while the engine wasn't monitoring.
         
+        NOTE: This sync is ONLY relevant when GTT stop-loss is enabled. When GTT is disabled,
+        the engine manages stop-losses itself via _check_stop_loss(), so we should NOT
+        automatically close trades just because the broker position is 0.
+        
         Args:
             current_time: Current timestamp
         """
         if not self.live_trading or not self.broker:
+            return
+        
+        # Skip position sync if GTT is disabled - engine manages SL itself
+        if not self.use_gtt_for_stop_loss:
             return
         
         try:
@@ -981,6 +989,11 @@ class KiteTradingEngine:
                 if not trade.get('broker_order_id'):
                     continue
                 
+                # Only check for GTT-triggered closes if the trade has a GTT ID
+                # (meaning a GTT stop-loss was actually placed for this trade)
+                if not trade.get('gtt_id'):
+                    continue
+                
                 # Get broker position for this symbol
                 broker_qty = broker_position_map.get(self.symbol, 0)
                 
@@ -990,7 +1003,7 @@ class KiteTradingEngine:
                 # Check if GTT might have triggered (position closed but we think it's open)
                 if broker_qty == 0:
                     # Position was closed on broker side (likely GTT triggered)
-                    self.logger.warning(f"🔔 Detected position closed by broker (likely GTT triggered): Trade {trade['id']}")
+                    self.logger.warning(f"🔔 Detected position closed by broker (GTT triggered): Trade {trade['id']}")
                     
                     # Get current price to calculate PnL
                     try:
@@ -1007,7 +1020,7 @@ class KiteTradingEngine:
                             position_type=position_type,
                             price=current_price,
                             timestamp=current_time,
-                            exit_type='sl_hit'  # Assume GTT stop-loss triggered
+                            exit_type='sl_hit'  # GTT stop-loss triggered
                         )
                         if closed_trades:
                             self.logger.info(f"✅ Trade {trade['id']} marked as closed (GTT stop-loss triggered)")
