@@ -1,0 +1,2 @@
+id,strategy,action,entry_price,entry_time,quantity,leverage,position_size,atr,take_profit,stop_loss,status,pnl,broker_order_id,stop_loss_order_id,gtt_id,margin_used,effective_leverage,exit_price,exit_time,broker_exit_order_id
+1,Moving Average Crossover,SELL,1.17703,2025-12-26 09:45:00+00:00,84959.60170938718,10.0,100000.0,0.0005350949235083592,1.172749240611933,1.1775650949235084,sl_hit,-0.00458781849230678,,,,10000.0,10.0,1.17757,2025-12-26 10:15:00+00:00,

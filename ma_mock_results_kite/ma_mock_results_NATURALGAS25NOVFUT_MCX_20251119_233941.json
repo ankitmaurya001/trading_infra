@@ -1,0 +1,49 @@
+{
+  "symbol": "NATURALGAS25NOVFUT",
+  "exchange": "MCX",
+  "start_date": "2025-11-04",
+  "end_date": "2025-11-19",
+  "interval": "15minute",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 28,
+        "long_window": 50,
+        "risk_reward_ratio": 5.0
+      },
+      "final_status": {
+        "current_balance": 10524.802144136813,
+        "total_pnl": 524.8021441368128,
+        "unrealized_pnl": 0,
+        "total_value": 10524.802144136813,
+        "active_trades": 0,
+        "total_trades": 11,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "performance_metrics": {
+        "total_trades": 11,
+        "win_rate": 0.2727272727272727,
+        "avg_return": 0.0067824288349236156,
+        "total_pnl": 0.05248021441368128,
+        "geometric_mean_return": 0.004660781240874989,
+        "sharpe_ratio": 0.09708696967538975,
+        "max_drawdown": 0.18741204798324507,
+        "profit_factor": 1.2797470739430454,
+        "avg_win": 0.11376672824152977,
+        "avg_loss": -0.033336683442553694,
+        "largest_win": 0.11875686341414178,
+        "largest_loss": -0.06295273946985454,
+        "consecutive_wins": 2,
+        "consecutive_losses": 6,
+        "risk_reward_ratio": 3.4126588638481214,
+        "calmar_ratio": 17.097898769775465,
+        "sortino_ratio": 0.4563667143370767
+      },
+      "simulation_duration_sec": 88.224837,
+      "session_id": "NATURALGAS25NOVFUT_MCX_ma_param_1_mock_20251119_233813",
+      "trade_history_csv": "ma_mock_results_kite/NATURALGAS25NOVFUT_MCX_ma_param_1_mock_20251119_233813_trades.csv"
+    }
+  ]
+}

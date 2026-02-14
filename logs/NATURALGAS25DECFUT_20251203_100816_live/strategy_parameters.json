@@ -1,0 +1,30 @@
+{
+  "session_id": "NATURALGAS25DECFUT_20251203_100816_live",
+  "symbol": "NATURALGAS25DECFUT",
+  "interval": "15minute",
+  "enabled_strategies": [
+    "ma"
+  ],
+  "strategy_parameters": {
+    "ma": {
+      "short_window": 30,
+      "long_window": 70,
+      "risk_reward_ratio": 6.0,
+      "trading_fee": 0.0
+    },
+    "rsi": {
+      "period": 14,
+      "overbought": 70,
+      "oversold": 30,
+      "risk_reward_ratio": 2.0,
+      "trading_fee": 0.0
+    },
+    "donchian": {
+      "channel_period": 20,
+      "risk_reward_ratio": 2.0,
+      "trading_fee": 0.0
+    }
+  },
+  "config_timestamp": "2025-12-03T10:08:16.905045",
+  "description": "Strategy parameters used during this trading session"
+}

@@ -1,0 +1,2 @@
+timestamp,symbol,strategy,signal,signal_name,current_price,current_balance,active_trades_count,position_type,take_profit,stop_loss,trade_status
+2025-10-03 18:53:18.361122+05:30,ETHUSDT,Moving Average Crossover,0,HOLD,4458.44,10000,0,NONE,,,NONE

@@ -1,0 +1,447 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MA Optimization Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        .plots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .plot-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .plot-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        .plot-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        .plot-iframe {
+            width: 100%;
+            height: 500px;
+            border: none;
+            border-radius: 5px;
+        }
+        .plot-link {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            margin-top: 10px;
+            transition: background 0.3s ease;
+        }
+        .plot-link:hover {
+            background: #5a6fd8;
+        }
+        .stats {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .stats h3 {
+            color: #333;
+            margin-top: 0;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .stat-item {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .footer {
+            text-align: center;
+            color: #666;
+            margin-top: 30px;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 MA Optimization Dashboard</h1>
+        <p>Interactive 3D Visualizations for Moving Average Crossover Strategy</p>
+    </div>
+    
+    <div class="stats">
+        <h3>📈 Dashboard Statistics</h3>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-number">49</div>
+                <div class="stat-label">Total Plots</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">3D</div>
+                <div class="stat-label">Visualizations</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">Interactive</div>
+                <div class="stat-label">Plotly Charts</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">Real-time</div>
+                <div class="stat-label">Analysis</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="plots-grid">
+
+        <div class="plot-card">
+            <div class="plot-title">MA 2D Heatmaps Composite Score</div>
+            <iframe src="ma_2d_heatmaps_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_2d_heatmaps_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA 3D Gaussian Bell Curves Composite Score</div>
+            <iframe src="ma_3d_gaussian_bell_curves_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_3d_gaussian_bell_curves_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA 3D Gaussian Surfaces Composite Score</div>
+            <iframe src="ma_3d_gaussian_surfaces_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_3d_gaussian_surfaces_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA 3D Plots Composite Score</div>
+            <iframe src="ma_3d_plots_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_3d_plots_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Combined 3D Gaussian Composite Score</div>
+            <iframe src="ma_combined_3d_gaussian_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_combined_3d_gaussian_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Distribution Contours Composite Score</div>
+            <iframe src="ma_distribution_contours_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_distribution_contours_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 1.5 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_1.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_1.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 10.0 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_10.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_10.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 2.0 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_2.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_2.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 2.5 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_2.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_2.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 3.0 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_3.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_3.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 3.5 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_3.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_3.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 4.0 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_4.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_4.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 4.5 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_4.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_4.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 5.0 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_5.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_5.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 5.5 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_5.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_5.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 6.0 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_6.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_6.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 6.5 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_6.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_6.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 7.0 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_7.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_7.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 7.5 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_7.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_7.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 8.0 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_8.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_8.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 8.5 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_8.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_8.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 9.0 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_9.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_9.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual 3D Plot RR 9.5 Composite Score</div>
+            <iframe src="ma_individual_3d_plot_rr_9.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_3d_plot_rr_9.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Data Points RR 4.0 Composite Score</div>
+            <iframe src="ma_individual_data_points_rr_4.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_data_points_rr_4.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Data Points RR 4.5 Composite Score</div>
+            <iframe src="ma_individual_data_points_rr_4.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_data_points_rr_4.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Data Points RR 5.0 Composite Score</div>
+            <iframe src="ma_individual_data_points_rr_5.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_data_points_rr_5.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Data Points RR 5.5 Composite Score</div>
+            <iframe src="ma_individual_data_points_rr_5.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_data_points_rr_5.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Data Points RR 6.0 Composite Score</div>
+            <iframe src="ma_individual_data_points_rr_6.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_data_points_rr_6.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 1.5 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_1.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_1.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 10.0 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_10.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_10.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 2.0 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_2.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_2.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 2.5 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_2.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_2.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 3.0 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_3.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_3.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 3.5 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_3.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_3.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 4.0 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_4.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_4.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 4.5 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_4.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_4.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 5.0 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_5.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_5.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 5.5 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_5.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_5.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 6.0 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_6.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_6.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 6.5 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_6.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_6.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 7.0 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_7.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_7.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 7.5 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_7.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_7.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 8.0 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_8.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_8.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 8.5 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_8.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_8.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 9.0 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_9.0_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_9.0_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Individual Gaussian Bell RR 9.5 Composite Score</div>
+            <iframe src="ma_individual_gaussian_bell_rr_9.5_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_individual_gaussian_bell_rr_9.5_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Optimal Regions Composite Score</div>
+            <iframe src="ma_optimal_regions_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_optimal_regions_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+        <div class="plot-card">
+            <div class="plot-title">MA Summary Plot Composite Score</div>
+            <iframe src="ma_summary_plot_composite_score.html" class="plot-iframe"></iframe>
+            <a href="ma_summary_plot_composite_score.html" target="_blank" class="plot-link">🔗 Open in New Tab</a>
+        </div>
+
+    </div>
+    
+    <div class="footer">
+        <p>Generated by MA Optimization Visualizer | Interactive 3D Trading Strategy Analysis</p>
+    </div>
+</body>
+</html>

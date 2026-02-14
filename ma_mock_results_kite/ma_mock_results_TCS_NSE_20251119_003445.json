@@ -1,0 +1,49 @@
+{
+  "symbol": "TCS",
+  "exchange": "NSE",
+  "start_date": "2025-11-04",
+  "end_date": "2025-11-19",
+  "interval": "15minute",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 9,
+        "long_window": 73,
+        "risk_reward_ratio": 4.0
+      },
+      "final_status": {
+        "current_balance": 10490.215077124178,
+        "total_pnl": 490.2150771241777,
+        "unrealized_pnl": 0,
+        "total_value": 10490.215077124178,
+        "active_trades": 0,
+        "total_trades": 4,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "performance_metrics": {
+        "total_trades": 4,
+        "win_rate": 0.25,
+        "avg_return": 0.014634858400794367,
+        "total_pnl": 0.04902150771241777,
+        "geometric_mean_return": 0.012036318499407006,
+        "sharpe_ratio": 0.16997124925306561,
+        "max_drawdown": 0.08271964512837152,
+        "profit_factor": 1.6880351737957588,
+        "avg_win": 0.14362146986046154,
+        "avg_loss": -0.02836067875242802,
+        "largest_win": 0.14362146986046154,
+        "largest_loss": -0.033044021501945735,
+        "consecutive_wins": 1,
+        "consecutive_losses": 3,
+        "risk_reward_ratio": 5.064105521387276,
+        "calmar_ratio": 210.12691535555925,
+        "sortino_ratio": 2.7353661074537667
+      },
+      "simulation_duration_sec": 4.014256,
+      "session_id": "TCS_NSE_ma_param_1_mock_20251119_003441",
+      "trade_history_csv": "ma_mock_results_kite/TCS_NSE_ma_param_1_mock_20251119_003441_trades.csv"
+    }
+  ]
+}

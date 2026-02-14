@@ -1,0 +1,16 @@
+{
+  "current_balance": 10101.411247429261,
+  "total_pnl": 101.4112474292615,
+  "unrealized_pnl": 0,
+  "total_value": 10101.411247429261,
+  "active_trades": 0,
+  "total_trades": 1,
+  "active_trade_info": null,
+  "can_trade": true,
+  "is_running": true,
+  "last_update": "2025-09-08T15:15:04.087719",
+  "session_id": "TATAMOTORS_20250908_091841_live",
+  "symbol": "TATAMOTORS",
+  "interval": "15minute",
+  "mock_mode": false
+}

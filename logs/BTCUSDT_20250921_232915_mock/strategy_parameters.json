@@ -1,0 +1,30 @@
+{
+  "session_id": "BTCUSDT_20250921_232915_mock",
+  "symbol": "BTCUSDT",
+  "interval": "15m",
+  "enabled_strategies": [
+    "ma"
+  ],
+  "strategy_parameters": {
+    "ma": {
+      "short_window": 5,
+      "long_window": 40,
+      "risk_reward_ratio": 2.0,
+      "trading_fee": 0.0
+    },
+    "rsi": {
+      "period": 14,
+      "overbought": 70,
+      "oversold": 30,
+      "risk_reward_ratio": 2.0,
+      "trading_fee": 0.0
+    },
+    "donchian": {
+      "channel_period": 20,
+      "risk_reward_ratio": 2.0,
+      "trading_fee": 0.0
+    }
+  },
+  "config_timestamp": "2025-09-21T23:29:15.917744",
+  "description": "Strategy parameters used during this trading session"
+}

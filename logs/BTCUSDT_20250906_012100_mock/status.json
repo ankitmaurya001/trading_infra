@@ -1,0 +1,25 @@
+{
+  "current_balance": 0,
+  "total_pnl": -10000,
+  "unrealized_pnl": 32.09536506637414,
+  "total_value": 32.09536506637414,
+  "active_trades": 1,
+  "total_trades": 5,
+  "active_trade_info": {
+    "strategy": "Moving Average Crossover",
+    "action": "SELL",
+    "entry_price": 112329.44,
+    "quantity": 0.09003917709244821,
+    "entry_time": "2025-08-28 22:15:00+05:30"
+  },
+  "can_trade": false,
+  "is_running": true,
+  "last_update": "2025-08-29T02:45:00+05:30",
+  "session_id": "BTCUSDT_20250906_012100_mock",
+  "symbol": "BTCUSDT",
+  "interval": "15m",
+  "mock_mode": true,
+  "mock_progress": 86.75347222222223,
+  "mock_total_points": 5760,
+  "mock_current_point": 4997
+}

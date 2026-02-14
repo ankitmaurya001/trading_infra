@@ -1,0 +1,48 @@
+{
+  "symbol": "ETHUSDT",
+  "start_date": "2025-10-18 11:32:57",
+  "end_date": "2025-11-02 11:32:57",
+  "interval": "15m",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 10,
+        "long_window": 50,
+        "risk_reward_ratio": 3.5
+      },
+      "final_status": {
+        "current_balance": 13341.497234500292,
+        "total_pnl": 3341.4972345002916,
+        "unrealized_pnl": 0,
+        "total_value": 13341.497234500292,
+        "active_trades": 0,
+        "total_trades": 37,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "performance_metrics": {
+        "total_trades": 37,
+        "win_rate": 0.32432432432432434,
+        "avg_return": 0.009121856531766597,
+        "total_pnl": 0.33414972345002913,
+        "geometric_mean_return": 0.007822169089629405,
+        "sharpe_ratio": 0.17313968808162175,
+        "max_drawdown": 0.1730408905397535,
+        "profit_factor": 1.5204648869441104,
+        "avg_win": 0.08216534352328357,
+        "avg_loss": -0.025939017224161542,
+        "largest_win": 0.12660553508886513,
+        "largest_loss": -0.03579839849269888,
+        "consecutive_wins": 5,
+        "consecutive_losses": 6,
+        "risk_reward_ratio": 3.1676351811335635,
+        "calmar_ratio": 10613.946141587294,
+        "sortino_ratio": 1.75700765975942
+      },
+      "simulation_duration_sec": 955.514044,
+      "session_id": "ETHUSDT_ma_param_1_mock_20251102_113257",
+      "trade_history_csv": "ma_mock_results/ETHUSDT_ma_param_1_mock_20251102_113257_trades.csv"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+timestamp,symbol,strategy,signal,signal_name,current_price,current_balance,active_trades_count,position_type,take_profit,stop_loss,trade_status
+2026-01-20 22:59:43.936771+05:30,EURJPY,Moving Average Crossover,0,HOLD,185.305,10000,0,NONE,,,NONE

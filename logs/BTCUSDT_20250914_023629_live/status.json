@@ -1,0 +1,16 @@
+{
+  "current_balance": 10000,
+  "total_pnl": 0,
+  "unrealized_pnl": 0,
+  "total_value": 10000,
+  "active_trades": 0,
+  "total_trades": 0,
+  "active_trade_info": null,
+  "can_trade": true,
+  "is_running": true,
+  "last_update": "2025-09-14T02:45:04.849698",
+  "session_id": "BTCUSDT_20250914_023629_live",
+  "symbol": "BTCUSDT",
+  "interval": "15m",
+  "mock_mode": false
+}

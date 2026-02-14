@@ -1,0 +1,185 @@
+{
+  "best_strategy": {
+    "strategy_key": "ma",
+    "strategy_name": "Moving Average Crossover",
+    "parameter_set": 4,
+    "composite_score": -0.644538964116526,
+    "sharpe_ratio": 0.0116542057022326,
+    "calmar_ratio": -3.874364497762078,
+    "win_rate": 0.23076923076923078,
+    "max_drawdown": 0.16979298585205777,
+    "total_pnl": -0.011684369217102721,
+    "total_trades": 13,
+    "parameters": {
+      "short_window": 25,
+      "long_window": 30,
+      "risk_reward_ratio": 5.0,
+      "trading_fee": 0.0
+    },
+    "final_status": {
+      "current_balance": 9883.156307828973,
+      "total_pnl": -116.84369217102721,
+      "unrealized_pnl": 0,
+      "total_value": 9883.156307828973,
+      "active_trades": 0,
+      "total_trades": 13,
+      "active_trade_info": null,
+      "can_trade": true
+    },
+    "optimization_score": 5050.6131605411165
+  },
+  "all_strategies_ranked": [
+    {
+      "strategy_key": "ma",
+      "strategy_name": "Moving Average Crossover",
+      "parameter_set": 4,
+      "composite_score": -0.644538964116526,
+      "sharpe_ratio": 0.0116542057022326,
+      "calmar_ratio": -3.874364497762078,
+      "win_rate": 0.23076923076923078,
+      "max_drawdown": 0.16979298585205777,
+      "total_pnl": -0.011684369217102721,
+      "total_trades": 13,
+      "parameters": {
+        "short_window": 25,
+        "long_window": 30,
+        "risk_reward_ratio": 5.0,
+        "trading_fee": 0.0
+      },
+      "final_status": {
+        "current_balance": 9883.156307828973,
+        "total_pnl": -116.84369217102721,
+        "unrealized_pnl": 0,
+        "total_value": 9883.156307828973,
+        "active_trades": 0,
+        "total_trades": 13,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "optimization_score": 5050.6131605411165
+    },
+    {
+      "strategy_key": "ma",
+      "strategy_name": "Moving Average Crossover",
+      "parameter_set": 5,
+      "composite_score": -0.7603868295569112,
+      "sharpe_ratio": -0.5405820534040898,
+      "calmar_ratio": -3.163861961461054,
+      "win_rate": 0.07692307692307693,
+      "max_drawdown": 0.3160694152193084,
+      "total_pnl": -0.24608747553078983,
+      "total_trades": 13,
+      "parameters": {
+        "short_window": 30,
+        "long_window": 40,
+        "risk_reward_ratio": 5.0,
+        "trading_fee": 0.0
+      },
+      "final_status": {
+        "current_balance": 7539.125244692102,
+        "total_pnl": -2460.8747553078983,
+        "unrealized_pnl": 0,
+        "total_value": 7539.125244692102,
+        "active_trades": 0,
+        "total_trades": 13,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "optimization_score": 3545.264884821579
+    },
+    {
+      "strategy_key": "ma",
+      "strategy_name": "Moving Average Crossover",
+      "parameter_set": 3,
+      "composite_score": -0.9947972858457611,
+      "sharpe_ratio": -0.038526321580239505,
+      "calmar_ratio": -5.516065168553785,
+      "win_rate": 0.25,
+      "max_drawdown": 0.18118517661579614,
+      "total_pnl": -0.0595391899967628,
+      "total_trades": 16,
+      "parameters": {
+        "short_window": 5,
+        "long_window": 40,
+        "risk_reward_ratio": 4.0,
+        "trading_fee": 0.0
+      },
+      "final_status": {
+        "current_balance": 9404.608100032372,
+        "total_pnl": -595.391899967628,
+        "unrealized_pnl": 0,
+        "total_value": 9404.608100032372,
+        "active_trades": 0,
+        "total_trades": 16,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "optimization_score": 5387.970012385085
+    },
+    {
+      "strategy_key": "ma",
+      "strategy_name": "Moving Average Crossover",
+      "parameter_set": 1,
+      "composite_score": -1.031779746720482,
+      "sharpe_ratio": -0.13798672320438066,
+      "calmar_ratio": -5.48864892997062,
+      "win_rate": 0.25,
+      "max_drawdown": 0.18219417610954583,
+      "total_pnl": -0.1221726307704459,
+      "total_trades": 16,
+      "parameters": {
+        "short_window": 5,
+        "long_window": 40,
+        "risk_reward_ratio": 3.5,
+        "trading_fee": 0.0
+      },
+      "final_status": {
+        "current_balance": 8778.273692295541,
+        "total_pnl": -1221.726307704459,
+        "unrealized_pnl": 0,
+        "total_value": 8778.273692295541,
+        "active_trades": 0,
+        "total_trades": 16,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "optimization_score": 17653.256082408443
+    },
+    {
+      "strategy_key": "ma",
+      "strategy_name": "Moving Average Crossover",
+      "parameter_set": 2,
+      "composite_score": -1.031779746720482,
+      "sharpe_ratio": -0.13798672320438066,
+      "calmar_ratio": -5.48864892997062,
+      "win_rate": 0.25,
+      "max_drawdown": 0.18219417610954583,
+      "total_pnl": -0.1221726307704459,
+      "total_trades": 16,
+      "parameters": {
+        "short_window": 5,
+        "long_window": 40,
+        "risk_reward_ratio": 3.0,
+        "trading_fee": 0.0
+      },
+      "final_status": {
+        "current_balance": 8778.273692295541,
+        "total_pnl": -1221.726307704459,
+        "unrealized_pnl": 0,
+        "total_value": 8778.273692295541,
+        "active_trades": 0,
+        "total_trades": 16,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "optimization_score": 9121.664905108102
+    }
+  ],
+  "comparison_summary": {
+    "total_strategies_tested": 5,
+    "best_composite_score": -0.644538964116526,
+    "best_sharpe_ratio": 0.0116542057022326,
+    "best_win_rate": 0.25,
+    "lowest_drawdown": 0.16979298585205777
+  }
+}

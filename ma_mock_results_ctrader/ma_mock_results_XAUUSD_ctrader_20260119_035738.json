@@ -1,0 +1,55 @@
+{
+  "symbol": "XAUUSD",
+  "start_date": "2025-12-05",
+  "end_date": "2026-01-04",
+  "interval": "15m",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 30,
+        "long_window": 69,
+        "risk_reward_ratio": 9.0
+      },
+      "final_status": {
+        "current_balance": 0.0,
+        "total_pnl": -10000.0,
+        "unrealized_pnl": 0.0,
+        "total_value": 0.0,
+        "active_trades": 1,
+        "total_trades": 9,
+        "active_trade_info": {
+          "strategy": "Moving Average Crossover",
+          "action": "SELL",
+          "entry_price": 4330.15,
+          "quantity": 19.572143010460152,
+          "entry_time": "2026-01-02 17:00:00+00:00"
+        },
+        "can_trade": false
+      },
+      "performance_metrics": {
+        "total_trades": 8,
+        "win_rate": 0.25,
+        "avg_return": 0.02177230191865024,
+        "total_pnl": -1.0,
+        "geometric_mean_return": 0.017693280724550897,
+        "sharpe_ratio": 0.21616413320499764,
+        "max_drawdown": 0.12486961365983784,
+        "profit_factor": 1.911395061916275,
+        "avg_win": 0.1826451430902368,
+        "avg_loss": -0.03185197847187861,
+        "largest_win": 0.19944857571458596,
+        "largest_loss": -0.06250110974981969,
+        "consecutive_wins": 1,
+        "consecutive_losses": 4,
+        "risk_reward_ratio": 5.734185185748824,
+        "calmar_ratio": 2362.3086381831067,
+        "sortino_ratio": 1.2851653929558595
+      },
+      "simulation_duration_sec": 90.731466,
+      "session_id": "XAUUSD_ctrader_ma_param_1_mock_20260119_035608",
+      "trade_history_csv": "ma_mock_results_ctrader/XAUUSD_ctrader_ma_param_1_mock_20260119_035608_trades.csv"
+    }
+  ],
+  "failed_results": []
+}

@@ -1,0 +1,57 @@
+{
+  "symbol": "CRUDEOIL26MARFUT",
+  "exchange": "MCX",
+  "start_date": "2025-12-05",
+  "end_date": "2026-02-03",
+  "interval": "15minute",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 78,
+        "long_window": 91,
+        "risk_reward_ratio": 9.0
+      },
+      "final_status": {
+        "current_balance": 0.0,
+        "total_pnl": -10000.0,
+        "unrealized_pnl": 0.0,
+        "total_value": 0.0,
+        "active_trades": 1,
+        "total_trades": 13,
+        "active_trade_info": {
+          "strategy": "Moving Average Crossover",
+          "action": "SELL",
+          "entry_price": 5715.0,
+          "quantity": 3.025103743338196,
+          "entry_time": "2026-02-02 09:15:00+05:30",
+          "atr": 49.89891564195318
+        },
+        "can_trade": false
+      },
+      "performance_metrics": {
+        "total_trades": 12,
+        "win_rate": 0.08333333333333333,
+        "avg_return": -0.022557327851367243,
+        "total_pnl": -1.0,
+        "geometric_mean_return": -0.023174963823688444,
+        "sharpe_ratio": -0.6096512749180315,
+        "max_drawdown": 0.2879424126523264,
+        "profit_factor": 0.23163074474550951,
+        "avg_win": 0.08160093258208664,
+        "avg_loss": -0.03202626061804486,
+        "largest_win": 0.08160093258208664,
+        "largest_loss": -0.07970332759522825,
+        "consecutive_wins": 1,
+        "consecutive_losses": 10,
+        "risk_reward_ratio": 2.547938192200605,
+        "calmar_ratio": -3.4573141361916275,
+        "sortino_ratio": -1.2562717304915405
+      },
+      "simulation_duration_sec": 192.719891,
+      "session_id": "CRUDEOIL26MARFUT_MCX_ma_param_1_mock_20260203_140246",
+      "trade_history_csv": "ma_mock_results_kite/CRUDEOIL26MARFUT_MCX_ma_param_1_mock_20260203_140246_trades.csv"
+    }
+  ],
+  "failed_results": []
+}

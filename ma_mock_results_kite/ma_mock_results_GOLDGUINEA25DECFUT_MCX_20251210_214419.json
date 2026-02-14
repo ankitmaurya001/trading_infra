@@ -1,0 +1,49 @@
+{
+  "symbol": "GOLDGUINEA25DECFUT",
+  "exchange": "MCX",
+  "start_date": "2025-11-10",
+  "end_date": "2025-12-10",
+  "interval": "15minute",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 16,
+        "long_window": 64,
+        "risk_reward_ratio": 6.0
+      },
+      "final_status": {
+        "current_balance": 9611.07628242326,
+        "total_pnl": -388.92371757673936,
+        "unrealized_pnl": 0,
+        "total_value": 9611.07628242326,
+        "active_trades": 0,
+        "total_trades": 14,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "performance_metrics": {
+        "total_trades": 14,
+        "win_rate": 0.14285714285714285,
+        "avg_return": -0.0019011436551813188,
+        "total_pnl": -0.03889237175767394,
+        "geometric_mean_return": -0.002829480894333325,
+        "sharpe_ratio": -0.04136798262016787,
+        "max_drawdown": 0.1508308858007847,
+        "profit_factor": 0.8875329482172584,
+        "avg_win": 0.10502003249529265,
+        "avg_loss": -0.019721339680260314,
+        "largest_win": 0.11688402120823262,
+        "largest_loss": -0.028621659334839407,
+        "consecutive_wins": 1,
+        "consecutive_losses": 9,
+        "risk_reward_ratio": 5.32519768930355,
+        "calmar_ratio": -2.6769060267329645,
+        "sortino_ratio": -0.2819956837282344
+      },
+      "simulation_duration_sec": 307.849793,
+      "session_id": "GOLDGUINEA25DECFUT_MCX_ma_param_1_mock_20251210_213912",
+      "trade_history_csv": "ma_mock_results_kite/GOLDGUINEA25DECFUT_MCX_ma_param_1_mock_20251210_213912_trades.csv"
+    }
+  ]
+}

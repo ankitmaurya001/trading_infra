@@ -1,0 +1,55 @@
+{
+  "symbol": "EURJPY",
+  "start_date": "2025-11-20",
+  "end_date": "2026-01-19",
+  "interval": "1h",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 10,
+        "long_window": 190,
+        "risk_reward_ratio": 8.5
+      },
+      "final_status": {
+        "current_balance": 0.0,
+        "total_pnl": -10000.0,
+        "unrealized_pnl": 0.0,
+        "total_value": 0.0,
+        "active_trades": 1,
+        "total_trades": 2,
+        "active_trade_info": {
+          "strategy": "Moving Average Crossover",
+          "action": "SELL",
+          "entry_price": 183.875,
+          "quantity": 98.3493442444245,
+          "entry_time": "2026-01-16 06:00:00+00:00"
+        },
+        "can_trade": false
+      },
+      "performance_metrics": {
+        "total_trades": 1,
+        "win_rate": 1.0,
+        "avg_return": 0.019811049209696487,
+        "total_pnl": -1.0,
+        "geometric_mean_return": 0.019811049209696563,
+        "sharpe_ratio": 0,
+        "max_drawdown": 0,
+        "profit_factor": Infinity,
+        "avg_win": 0.019811049209696487,
+        "avg_loss": 0,
+        "largest_win": 0.019811049209696487,
+        "largest_loss": 0.019811049209696487,
+        "consecutive_wins": 1,
+        "consecutive_losses": 0,
+        "risk_reward_ratio": 0,
+        "calmar_ratio": 13927093386.383648,
+        "sortino_ratio": 0
+      },
+      "simulation_duration_sec": 14.968417,
+      "session_id": "EURJPY_ctrader_ma_param_1_mock_20260119_061842",
+      "trade_history_csv": "ma_mock_results_ctrader/EURJPY_ctrader_ma_param_1_mock_20260119_061842_trades.csv"
+    }
+  ],
+  "failed_results": []
+}

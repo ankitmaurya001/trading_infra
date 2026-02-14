@@ -1,0 +1,26 @@
+{
+  "current_balance": 0.0,
+  "total_pnl": -10000.0,
+  "unrealized_pnl": 29.302206676540663,
+  "total_value": 29.302206676540663,
+  "active_trades": 1,
+  "total_trades": 1,
+  "active_trade_info": {
+    "strategy": "Moving Average Crossover",
+    "action": "SELL",
+    "entry_price": 4192.99,
+    "quantity": 9.800069122588255,
+    "entry_time": "2025-09-23 20:45:00+05:30"
+  },
+  "can_trade": false,
+  "is_running": true,
+  "last_update": "2025-09-24T06:45:00+05:30",
+  "session_id": "ETHUSDT_20251003_131220_mock",
+  "symbol": "ETHUSDT",
+  "interval": "15m",
+  "mock_mode": true,
+  "execution_mode": "mock",
+  "mock_progress": 84.54861111111111,
+  "mock_total_points": 5760,
+  "mock_current_point": 4870
+}

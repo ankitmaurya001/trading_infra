@@ -1,0 +1,57 @@
+{
+  "symbol": "NATGASMINI26FEBFUT",
+  "exchange": "MCX",
+  "start_date": "2025-12-16",
+  "end_date": "2026-02-14",
+  "interval": "15minute",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 4,
+        "long_window": 184,
+        "risk_reward_ratio": 7.0
+      },
+      "final_status": {
+        "current_balance": 0.0,
+        "total_pnl": -10000.0,
+        "unrealized_pnl": 0.0,
+        "total_value": 0.0,
+        "active_trades": 1,
+        "total_trades": 6,
+        "active_trade_info": {
+          "strategy": "Moving Average Crossover",
+          "action": "SELL",
+          "entry_price": 300.8,
+          "quantity": 1,
+          "entry_time": "2026-02-09 09:15:00+05:30",
+          "atr": 4.793739366606726
+        },
+        "can_trade": false
+      },
+      "performance_metrics": {
+        "total_trades": 5,
+        "win_rate": 0.4,
+        "avg_return": 0.2451059862712536,
+        "total_pnl": -1.0,
+        "geometric_mean_return": 0.1868564171359084,
+        "sharpe_ratio": 0.5476421119449089,
+        "max_drawdown": 0.1253481894150418,
+        "profit_factor": 7.16456615778069,
+        "avg_win": 0.7121661157338803,
+        "avg_loss": -0.06626743337049756,
+        "largest_win": 0.9028268551236749,
+        "largest_loss": -0.09073359073359061,
+        "consecutive_wins": 2,
+        "consecutive_losses": 2,
+        "risk_reward_ratio": 10.746849236671034,
+        "calmar_ratio": 7.481131185525718e+17,
+        "sortino_ratio": 9.238786883869267
+      },
+      "simulation_duration_sec": 413.051775,
+      "session_id": "NATGASMINI26FEBFUT_MCX_ma_param_1_mock_20260214_220957",
+      "trade_history_csv": "ma_mock_results_kite/NATGASMINI26FEBFUT_MCX_ma_param_1_mock_20260214_220957_trades.csv"
+    }
+  ],
+  "failed_results": []
+}

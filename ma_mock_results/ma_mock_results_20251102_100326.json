@@ -1,0 +1,54 @@
+{
+  "symbol": "ETHUSDT",
+  "start_date": "2025-10-18 09:57:26",
+  "end_date": "2025-11-02 09:57:26",
+  "interval": "15m",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 10,
+        "long_window": 50,
+        "risk_reward_ratio": 1.5
+      },
+      "final_status": {
+        "current_balance": 0.0,
+        "total_pnl": -10000.0,
+        "unrealized_pnl": 0.0,
+        "total_value": 0.0,
+        "active_trades": 1,
+        "total_trades": 41,
+        "active_trade_info": {
+          "strategy": "Moving Average Crossover",
+          "action": "BUY",
+          "entry_price": 3882.42,
+          "quantity": 26.425010782465318,
+          "entry_time": "2025-11-02 09:00:00+05:30"
+        },
+        "can_trade": false
+      },
+      "performance_metrics": {
+        "total_trades": 40,
+        "win_rate": 0.375,
+        "avg_return": 0.0013784106706284907,
+        "total_pnl": -1.0,
+        "geometric_mean_return": 0.0006401904434032435,
+        "sharpe_ratio": 0.03496498325622591,
+        "max_drawdown": 0.1686853359709002,
+        "profit_factor": 1.0832335414683747,
+        "avg_win": 0.04783778737918309,
+        "avg_loss": -0.026497215354504267,
+        "largest_win": 0.11997906812717891,
+        "largest_loss": -0.03687294220969766,
+        "consecutive_wins": 6,
+        "consecutive_losses": 6,
+        "risk_reward_ratio": 1.8053892357806245,
+        "calmar_ratio": 5.626981951689517,
+        "sortino_ratio": 0.24080848884903702
+      },
+      "simulation_duration_sec": 359.282856,
+      "session_id": "ETHUSDT_ma_param_1_mock_20251102_095727",
+      "trade_history_csv": "ma_mock_results/ETHUSDT_ma_param_1_mock_20251102_095727_trades.csv"
+    }
+  ]
+}

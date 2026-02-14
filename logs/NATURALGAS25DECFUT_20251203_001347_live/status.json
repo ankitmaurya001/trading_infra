@@ -1,0 +1,16 @@
+{
+  "current_balance": 10000,
+  "total_pnl": 0,
+  "unrealized_pnl": 0,
+  "total_value": 10000,
+  "active_trades": 0,
+  "total_trades": 0,
+  "active_trade_info": null,
+  "can_trade": true,
+  "is_running": true,
+  "last_update": "2025-12-03T00:13:47.702781",
+  "session_id": "NATURALGAS25DECFUT_20251203_001347_live",
+  "symbol": "NATURALGAS25DECFUT",
+  "interval": "15minute",
+  "mock_mode": false
+}

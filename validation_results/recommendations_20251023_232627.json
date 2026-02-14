@@ -1,0 +1,119 @@
+{
+  "best_strategy": {
+    "strategy_key": "ma",
+    "strategy_name": "Moving Average Crossover",
+    "composite_score": 127762.3765257095,
+    "sharpe_ratio": 0.2793324140154388,
+    "calmar_ratio": 636083.537422159,
+    "win_rate": 0.4117647058823529,
+    "max_drawdown": 0.09434096096598317,
+    "total_pnl": 2727.0616135420933,
+    "total_trades": 17,
+    "parameters": {
+      "short_window": 30,
+      "long_window": 40,
+      "risk_reward_ratio": 3.5,
+      "trading_fee": 0.0
+    },
+    "final_status": {
+      "current_balance": 12727.061613542093,
+      "total_pnl": 2727.0616135420933,
+      "unrealized_pnl": 0,
+      "total_value": 12727.061613542093,
+      "active_trades": 0,
+      "total_trades": 17,
+      "active_trade_info": null,
+      "can_trade": true
+    }
+  },
+  "all_strategies_ranked": [
+    {
+      "strategy_key": "ma",
+      "strategy_name": "Moving Average Crossover",
+      "composite_score": 127762.3765257095,
+      "sharpe_ratio": 0.2793324140154388,
+      "calmar_ratio": 636083.537422159,
+      "win_rate": 0.4117647058823529,
+      "max_drawdown": 0.09434096096598317,
+      "total_pnl": 2727.0616135420933,
+      "total_trades": 17,
+      "parameters": {
+        "short_window": 30,
+        "long_window": 40,
+        "risk_reward_ratio": 3.5,
+        "trading_fee": 0.0
+      },
+      "final_status": {
+        "current_balance": 12727.061613542093,
+        "total_pnl": 2727.0616135420933,
+        "unrealized_pnl": 0,
+        "total_value": 12727.061613542093,
+        "active_trades": 0,
+        "total_trades": 17,
+        "active_trade_info": null,
+        "can_trade": true
+      }
+    },
+    {
+      "strategy_key": "donchian",
+      "strategy_name": "Donchian Channel",
+      "composite_score": 25934.956938935018,
+      "sharpe_ratio": 0.20480176682826653,
+      "calmar_ratio": 127371.84493367978,
+      "win_rate": 0.3333333333333333,
+      "max_drawdown": 0.09995209584152433,
+      "total_pnl": 2301.8492010596674,
+      "total_trades": 21,
+      "parameters": {
+        "channel_period": 20,
+        "risk_reward_ratio": 4.0,
+        "trading_fee": 0.0
+      },
+      "final_status": {
+        "current_balance": 12301.849201059667,
+        "total_pnl": 2301.8492010596674,
+        "unrealized_pnl": 0,
+        "total_value": 12301.849201059667,
+        "active_trades": 0,
+        "total_trades": 21,
+        "active_trade_info": null,
+        "can_trade": true
+      }
+    },
+    {
+      "strategy_key": "rsi",
+      "strategy_name": "RSI Strategy",
+      "composite_score": -458.28244154717316,
+      "sharpe_ratio": -0.2309994735523815,
+      "calmar_ratio": -3.423008689711612,
+      "win_rate": 0.27586206896551724,
+      "max_drawdown": 0.2921385804258346,
+      "total_pnl": -2288.2724926145784,
+      "total_trades": 29,
+      "parameters": {
+        "period": 20,
+        "overbought": 65,
+        "oversold": 35,
+        "risk_reward_ratio": 2.0,
+        "trading_fee": 0.0
+      },
+      "final_status": {
+        "current_balance": 7711.727507385422,
+        "total_pnl": -2288.2724926145784,
+        "unrealized_pnl": 0,
+        "total_value": 7711.727507385422,
+        "active_trades": 0,
+        "total_trades": 29,
+        "active_trade_info": null,
+        "can_trade": true
+      }
+    }
+  ],
+  "comparison_summary": {
+    "total_strategies_tested": 3,
+    "best_composite_score": 127762.3765257095,
+    "best_sharpe_ratio": 0.2793324140154388,
+    "best_win_rate": 0.4117647058823529,
+    "lowest_drawdown": 0.09434096096598317
+  }
+}

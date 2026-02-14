@@ -1,0 +1,210 @@
+{
+  "ma": {
+    "best_params": {
+      "short_window": 25,
+      "long_window": 30,
+      "risk_reward_ratio": 5.0,
+      "trading_fee": 0.0
+    },
+    "best_metrics": {
+      "total_trades": 41,
+      "win_rate": 0.3902439024390244,
+      "avg_return": 0.01100219912097834,
+      "total_pnl": 0.5429389475137545,
+      "geometric_mean_return": 0.010633923115883848,
+      "sharpe_ratio": 0.394937711940004,
+      "max_drawdown": 0.04629861589846226,
+      "profit_factor": 3.0921422550225595,
+      "avg_win": 0.041668860992171056,
+      "avg_loss": -0.008624464476584992,
+      "largest_win": 0.07447589098532484,
+      "largest_loss": -0.028947110195270364,
+      "consecutive_wins": 4,
+      "consecutive_losses": 5,
+      "win_loss_ratio": 4.831472273472749,
+      "calmar_ratio": 89661.46838524843,
+      "sortino_ratio": 2.200129616646677,
+      "most_robust_params": {
+        "short_window": 5,
+        "long_window": 40,
+        "risk_reward_ratio": 4.0,
+        "trading_fee": 0.0
+      },
+      "most_robust_score": 9427.95000986082,
+      "most_robust_robustness": 0.2462805246864291,
+      "robustness": 0.3788642342341555
+    },
+    "top_5_results": [
+      {
+        "parameters": {
+          "short_window": 25,
+          "long_window": 30,
+          "risk_reward_ratio": 5.0,
+          "trading_fee": 0.0
+        },
+        "metrics": {
+          "total_trades": 41,
+          "win_rate": 0.3902439024390244,
+          "avg_return": 0.01100219912097834,
+          "total_pnl": 0.5429389475137545,
+          "geometric_mean_return": 0.010633923115883848,
+          "sharpe_ratio": 0.394937711940004,
+          "max_drawdown": 0.04629861589846226,
+          "profit_factor": 3.0921422550225595,
+          "avg_win": 0.041668860992171056,
+          "avg_loss": -0.008624464476584992,
+          "largest_win": 0.07447589098532484,
+          "largest_loss": -0.028947110195270364,
+          "consecutive_wins": 4,
+          "consecutive_losses": 5,
+          "win_loss_ratio": 4.831472273472749,
+          "calmar_ratio": 89661.46838524843,
+          "sortino_ratio": 2.200129616646677,
+          "most_robust_params": {
+            "short_window": 5,
+            "long_window": 40,
+            "risk_reward_ratio": 4.0,
+            "trading_fee": 0.0
+          },
+          "most_robust_score": 9427.95000986082,
+          "most_robust_robustness": 0.2462805246864291,
+          "robustness": 0.3788642342341555
+        },
+        "score": 17933.011734628166,
+        "signals_df_shape": [
+          2015,
+          16
+        ]
+      },
+      {
+        "parameters": {
+          "short_window": 5,
+          "long_window": 40,
+          "risk_reward_ratio": 3.0,
+          "trading_fee": 0.0
+        },
+        "metrics": {
+          "total_trades": 47,
+          "win_rate": 0.5106382978723404,
+          "avg_return": 0.008925341961411622,
+          "total_pnl": 0.5060761237279905,
+          "geometric_mean_return": 0.008750997305888797,
+          "sharpe_ratio": 0.46952130116802193,
+          "max_drawdown": 0.04011495085621746,
+          "profit_factor": 3.205794841001429,
+          "avg_win": 0.0254028292897699,
+          "avg_loss": -0.008268557859483976,
+          "largest_win": 0.04567623335209158,
+          "largest_loss": -0.01657517454564827,
+          "consecutive_wins": 5,
+          "consecutive_losses": 4,
+          "win_loss_ratio": 3.072220055959703,
+          "calmar_ratio": 65021.99219559633,
+          "sortino_ratio": 2.5510727417629537
+        },
+        "score": 13005.170585569898,
+        "signals_df_shape": [
+          2015,
+          16
+        ]
+      },
+      {
+        "parameters": {
+          "short_window": 5,
+          "long_window": 40,
+          "risk_reward_ratio": 4.0,
+          "trading_fee": 0.0
+        },
+        "metrics": {
+          "total_trades": 37,
+          "win_rate": 0.4594594594594595,
+          "avg_return": 0.010933187713184396,
+          "total_pnl": 0.4810771689260851,
+          "geometric_mean_return": 0.010671938884357468,
+          "sharpe_ratio": 0.46749057492809704,
+          "max_drawdown": 0.04011495085621743,
+          "profit_factor": 3.322257671425901,
+          "avg_win": 0.03404258370705793,
+          "avg_loss": -0.008709798881608099,
+          "largest_win": 0.05794590970049175,
+          "largest_loss": -0.01657517454564827,
+          "consecutive_wins": 5,
+          "consecutive_losses": 4,
+          "win_loss_ratio": 3.9085384369716483,
+          "calmar_ratio": 47135.84145175854,
+          "sortino_ratio": 3.0632480892299507
+        },
+        "score": 9427.95000986082,
+        "signals_df_shape": [
+          2015,
+          16
+        ]
+      },
+      {
+        "parameters": {
+          "short_window": 5,
+          "long_window": 40,
+          "risk_reward_ratio": 3.5,
+          "trading_fee": 0.0
+        },
+        "metrics": {
+          "total_trades": 44,
+          "win_rate": 0.45454545454545453,
+          "avg_return": 0.009152119227630694,
+          "total_pnl": 0.47921087579802824,
+          "geometric_mean_return": 0.008937630436901323,
+          "sharpe_ratio": 0.4331878194619935,
+          "max_drawdown": 0.040114950856217586,
+          "profit_factor": 3.0234738633417013,
+          "avg_win": 0.030085204615940442,
+          "avg_loss": -0.008292118595960758,
+          "largest_win": 0.05329319178154531,
+          "largest_loss": -0.01657517454564827,
+          "consecutive_wins": 5,
+          "consecutive_losses": 5,
+          "win_loss_ratio": 3.6281686360100416,
+          "calmar_ratio": 46007.22363620657,
+          "sortino_ratio": 2.699492032469433
+        },
+        "score": 9202.172056243344,
+        "signals_df_shape": [
+          2015,
+          16
+        ]
+      },
+      {
+        "parameters": {
+          "short_window": 25,
+          "long_window": 30,
+          "risk_reward_ratio": 4.5,
+          "trading_fee": 0.0
+        },
+        "metrics": {
+          "total_trades": 41,
+          "win_rate": 0.3902439024390244,
+          "avg_return": 0.009771117638359623,
+          "total_pnl": 0.4699482868069702,
+          "geometric_mean_return": 0.00944006484726767,
+          "sharpe_ratio": 0.37013227875830673,
+          "max_drawdown": 0.04629861589846237,
+          "profit_factor": 2.858043820623981,
+          "avg_win": 0.03851421469296058,
+          "avg_loss": -0.008624464476584992,
+          "largest_win": 0.07447589098532484,
+          "largest_loss": -0.028947110195270364,
+          "consecutive_wins": 4,
+          "consecutive_losses": 5,
+          "win_loss_ratio": 4.46569346972497,
+          "calmar_ratio": 35328.65596615283,
+          "sortino_ratio": 1.9539480305262926
+        },
+        "score": 7066.407755606852,
+        "signals_df_shape": [
+          2015,
+          16
+        ]
+      }
+    ],
+    "strategy_name": "Moving Average Crossover"
+  }
+}

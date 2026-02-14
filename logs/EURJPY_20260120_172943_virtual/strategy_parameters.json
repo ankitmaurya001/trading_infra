@@ -1,0 +1,18 @@
+{
+  "session_id": "EURJPY_20260120_172943_virtual",
+  "symbol": "EURJPY",
+  "interval": "30m",
+  "enabled_strategies": [
+    "ma"
+  ],
+  "strategy_parameters": {
+    "ma": {
+      "short_window": 51,
+      "long_window": 148,
+      "risk_reward_ratio": 5.0,
+      "trading_fee": 0.0
+    }
+  },
+  "config_timestamp": "2026-01-20T17:29:43.935463+00:00",
+  "description": "Strategy parameters used during this trading session"
+}

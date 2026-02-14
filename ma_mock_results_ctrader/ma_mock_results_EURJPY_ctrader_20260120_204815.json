@@ -1,0 +1,49 @@
+{
+  "symbol": "EURJPY",
+  "start_date": "2025-11-21",
+  "end_date": "2026-01-20",
+  "interval": "30m",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 66,
+        "long_window": 247,
+        "risk_reward_ratio": 8.0
+      },
+      "final_status": {
+        "current_balance": 10293.54120977768,
+        "total_pnl": 293.5412097776807,
+        "unrealized_pnl": 0,
+        "total_value": 10293.54120977768,
+        "active_trades": 0,
+        "total_trades": 4,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "performance_metrics": {
+        "total_trades": 4,
+        "win_rate": 0.5,
+        "avg_return": 0.007305467337265181,
+        "total_pnl": 0.029354120977768072,
+        "geometric_mean_return": 0.007259105123771592,
+        "sharpe_ratio": 0.6546370707674337,
+        "max_drawdown": 0.004691732337171017,
+        "profit_factor": 7.2211660277163405,
+        "avg_win": 0.01695951926613846,
+        "avg_loss": -0.0023485845916080992,
+        "largest_win": 0.017528305796813345,
+        "largest_loss": -0.002629660273305788,
+        "consecutive_wins": 2,
+        "consecutive_losses": 2,
+        "risk_reward_ratio": 7.2211660277163405,
+        "calmar_ratio": 240.01669729123822,
+        "sortino_ratio": 18.378486045879498
+      },
+      "simulation_duration_sec": 93.317615,
+      "session_id": "EURJPY_ctrader_ma_param_1_mock_20260120_204642",
+      "trade_history_csv": "ma_mock_results_ctrader/EURJPY_ctrader_ma_param_1_mock_20260120_204642_trades.csv"
+    }
+  ],
+  "failed_results": []
+}

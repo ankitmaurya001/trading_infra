@@ -1,0 +1,113 @@
+{
+  "ma": {
+    "best_params": {
+      "short_window": 30,
+      "long_window": 40,
+      "risk_reward_ratio": 3.5,
+      "trading_fee": 0.0
+    },
+    "best_metrics": {
+      "total_trades": 37,
+      "win_rate": 0.40540540540540543,
+      "avg_return": 0.004942380339190903,
+      "total_pnl": 0.19542228741891,
+      "geometric_mean_return": 0.00483596657646479,
+      "sharpe_ratio": 0.33182081544589453,
+      "max_drawdown": 0.02075471542767333,
+      "profit_factor": 2.4103730395076752,
+      "avg_win": 0.02083516249550883,
+      "avg_loss": -0.005893607494662226,
+      "largest_win": 0.04583016529904059,
+      "largest_loss": -0.012470007382797913,
+      "consecutive_wins": 4,
+      "consecutive_losses": 3,
+      "win_loss_ratio": 3.5352137912779233,
+      "calmar_ratio": 1438.1272318640065,
+      "sortino_ratio": 2.0073352831446094,
+      "most_robust_params": {
+        "short_window": 30,
+        "long_window": 40,
+        "risk_reward_ratio": 3.5,
+        "trading_fee": 0.0
+      },
+      "most_robust_score": 288.22941826684354,
+      "most_robust_robustness": 0.2036612648386266,
+      "robustness": 0.2036612648386266
+    },
+    "strategy_name": "Moving Average Crossover"
+  },
+  "rsi": {
+    "best_params": {
+      "period": 20,
+      "overbought": 65,
+      "oversold": 35,
+      "risk_reward_ratio": 2.0,
+      "trading_fee": 0.0
+    },
+    "best_metrics": {
+      "total_trades": 78,
+      "win_rate": 0.5,
+      "avg_return": 0.0015456400225447513,
+      "total_pnl": 0.12351268868030263,
+      "geometric_mean_return": 0.0014941934843548665,
+      "sharpe_ratio": 0.15133536377424883,
+      "max_drawdown": 0.04261437368985194,
+      "profit_factor": 1.4102584897818256,
+      "avg_win": 0.010626236961480035,
+      "avg_loss": -0.0075349569163905335,
+      "largest_win": 0.021460001167960423,
+      "largest_loss": -0.022651327824312496,
+      "consecutive_wins": 6,
+      "consecutive_losses": 4,
+      "win_loss_ratio": 1.4102584897818256,
+      "calmar_ratio": 173.09234120045326,
+      "sortino_ratio": 0.32255174266923564,
+      "most_robust_params": {
+        "period": 20,
+        "overbought": 65,
+        "oversold": 35,
+        "risk_reward_ratio": 1.5,
+        "trading_fee": 0.0
+      },
+      "most_robust_score": 17.448478816634765,
+      "most_robust_robustness": 0.054071942763715186,
+      "robustness": 0.17913232899966863
+    },
+    "strategy_name": "RSI Strategy"
+  },
+  "donchian": {
+    "best_params": {
+      "channel_period": 20,
+      "risk_reward_ratio": 4.0,
+      "trading_fee": 0.0
+    },
+    "best_metrics": {
+      "total_trades": 60,
+      "win_rate": 0.3333333333333333,
+      "avg_return": 0.005787968219619912,
+      "total_pnl": 0.39881287865251713,
+      "geometric_mean_return": 0.005609406350299828,
+      "sharpe_ratio": 0.30023503040818134,
+      "max_drawdown": 0.05116615498881523,
+      "profit_factor": 2.396983463874316,
+      "avg_win": 0.0297934753072507,
+      "avg_loss": -0.006214785324195482,
+      "largest_win": 0.0726629297651952,
+      "largest_loss": -0.014470975132476215,
+      "consecutive_wins": 3,
+      "consecutive_losses": 7,
+      "win_loss_ratio": 4.793966927748632,
+      "calmar_ratio": 8916.191678364708,
+      "sortino_ratio": 1.9237843420562966,
+      "most_robust_params": {
+        "channel_period": 15,
+        "risk_reward_ratio": 3.0,
+        "trading_fee": 0.0
+      },
+      "most_robust_score": 691.862060004787,
+      "most_robust_robustness": 0.07183956587796109,
+      "robustness": 0.2612091055716477
+    },
+    "strategy_name": "Donchian Channel"
+  }
+}

@@ -62,6 +62,7 @@ import config as cfg
 # ============================================================================
 # You can override these via command-line arguments if needed
 DEFAULT_SYMBOL = "NATGASMINI26FEBFUT"  # Default Indian stock symbol
+#DEFAULT_SYMBOL = "CRUDEOIL26MARFUT"  # Default Indian stock symbol
 DEFAULT_EXCHANGE = "MCX"  # Default exchange (NSE, BSE, MCX)
 DAYS_TO_VALIDATE = 30
 # use 30 days ago (Kite uses YYYY-MM-DD format)
@@ -78,9 +79,9 @@ DEFAULT_INTERVAL = "15m"  # Will be converted to "15minute" for Kite
 DEFAULT_VALIDATION_WINDOW_DAYS = 31  # How often to run validation (every N days)
 
 # Parameter ranges for validation optimization (matching run_ma_optimization_kite.py format)
-VALIDATION_SHORT_VAL = 9 # Center value for short window range
-VALIDATION_LONG_VAL = 120  # Center value for long window range
-VALIDATION_RR_VAL = 6.0
+VALIDATION_SHORT_VAL = 4# Center value for short window range
+VALIDATION_LONG_VAL = 184  # Center value for long window range
+VALIDATION_RR_VAL = 7.0
 VALIDATION_RANGE = 4  # Range around center values
 VALIDATION_SHORT_START = max(VALIDATION_SHORT_VAL - VALIDATION_RANGE, 4)
 VALIDATION_SHORT_END = VALIDATION_SHORT_VAL + VALIDATION_RANGE
@@ -1011,6 +1012,7 @@ def run_ma_mock(
         "start_date": start_date_kite,
         "end_date": end_date_kite,
         "interval": kite_interval,
+        "backtest_data": validator.test_data.copy() if validator.test_data is not None else pd.DataFrame(),
         "results": results,
         "failed_results": failed_results,  # Include failed parameter sets in return value
     }
@@ -1075,4 +1077,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

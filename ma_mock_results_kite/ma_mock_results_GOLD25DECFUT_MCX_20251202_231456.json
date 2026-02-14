@@ -1,0 +1,55 @@
+{
+  "symbol": "GOLD25DECFUT",
+  "exchange": "MCX",
+  "start_date": "2025-11-02",
+  "end_date": "2025-12-02",
+  "interval": "15minute",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 5,
+        "long_window": 51,
+        "risk_reward_ratio": 6.0
+      },
+      "final_status": {
+        "current_balance": 0.0,
+        "total_pnl": -10000.0,
+        "unrealized_pnl": 0.0,
+        "total_value": 0.0,
+        "active_trades": 1,
+        "total_trades": 16,
+        "active_trade_info": {
+          "strategy": "Moving Average Crossover",
+          "action": "SELL",
+          "entry_price": 126509.0,
+          "quantity": 1.1272217209937163,
+          "entry_time": "2025-12-02 21:15:00+05:30"
+        },
+        "can_trade": false
+      },
+      "performance_metrics": {
+        "total_trades": 15,
+        "win_rate": 0.3333333333333333,
+        "avg_return": 0.026549390180272085,
+        "total_pnl": -1.0,
+        "geometric_mean_return": 0.023942064942123142,
+        "sharpe_ratio": 0.3448742248081535,
+        "max_drawdown": 0.11552493666982258,
+        "profit_factor": 2.5602851653336534,
+        "avg_win": 0.13069535877950222,
+        "avg_loss": -0.025523594119342984,
+        "largest_win": 0.15413618130932705,
+        "largest_loss": -0.03857173247376394,
+        "consecutive_wins": 2,
+        "consecutive_losses": 5,
+        "risk_reward_ratio": 5.120570330667307,
+        "calmar_ratio": 875.4999911698878,
+        "sortino_ratio": 3.2362882424883157
+      },
+      "simulation_duration_sec": 316.759798,
+      "session_id": "GOLD25DECFUT_MCX_ma_param_1_mock_20251202_230939",
+      "trade_history_csv": "ma_mock_results_kite/GOLD25DECFUT_MCX_ma_param_1_mock_20251202_230939_trades.csv"
+    }
+  ]
+}

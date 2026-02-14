@@ -1,0 +1,68 @@
+{
+  "validation_date": "2026-01-08T10:48:30.210343",
+  "current_params": {
+    "short_window": 11,
+    "long_window": 55,
+    "risk_reward_ratio": 8.0
+  },
+  "new_optimal_params": {
+    "short_window": 5,
+    "long_window": 30,
+    "risk_reward_ratio": 5.5,
+    "trading_fee": 0.0
+  },
+  "parameter_distance": 1.3675159962501353,
+  "performance_gap": 0.04435103132109752,
+  "should_reoptimize": false,
+  "alert_level": "none",
+  "alert_message": "\u2705 Parameters still optimal\n   Distance: 1.37 (very close to optimal)\n   Performance gap: 4.44%\n   No action needed",
+  "current_params_performance": {
+    "total_trades": 20,
+    "win_rate": 0.3,
+    "avg_return": 0.007471839900043642,
+    "total_pnl": 0.15121661813157417,
+    "geometric_mean_return": 0.0070658114756836365,
+    "sharpe_ratio": 0.25146410827106636,
+    "max_drawdown": 0.056180852483723384,
+    "profit_factor": 2.0924624705885284,
+    "avg_win": 0.04770429190324089,
+    "avg_loss": -0.009770639529898036,
+    "largest_win": 0.08864591081663277,
+    "largest_loss": -0.02351907916682501,
+    "consecutive_wins": 2,
+    "consecutive_losses": 7,
+    "win_loss_ratio": 4.882412431373233,
+    "calmar_ratio": 101.64435534746524,
+    "sortino_ratio": 1.3819249969485052
+  },
+  "new_optimal_performance": {
+    "total_trades": 25,
+    "win_rate": 0.36,
+    "avg_return": 0.007404712969840006,
+    "total_pnl": 0.1955676494526717,
+    "geometric_mean_return": 0.007170429016297941,
+    "sharpe_ratio": 0.3316005892476607,
+    "max_drawdown": 0.03648030024395984,
+    "profit_factor": 2.565127781302306,
+    "avg_win": 0.03371047963555201,
+    "avg_loss": -0.007392280779622991,
+    "largest_win": 0.06610235995193448,
+    "largest_loss": -0.018931305335980718,
+    "consecutive_wins": 2,
+    "consecutive_losses": 4,
+    "win_loss_ratio": 4.560227166759655,
+    "calmar_ratio": 253.89208074413673,
+    "sortino_ratio": 1.4567410272230488,
+    "most_robust_params": {
+      "short_window": 5,
+      "long_window": 30,
+      "risk_reward_ratio": 5.0,
+      "trading_fee": 0.0
+    },
+    "most_robust_score": 42.65561568466815,
+    "most_robust_robustness": 0.1648106465608822,
+    "robustness": 0.19434191504637893
+  },
+  "stability_score": 0.7,
+  "validation_data_period": "2025-12-09 09:00:00+05:30 to 2026-01-08 10:45:00+05:30"
+}

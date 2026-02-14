@@ -1,0 +1,2 @@
+timestamp,symbol,strategy,signal,signal_name,current_price,current_balance,active_trades_count,position_type,take_profit,stop_loss,trade_status
+2025-09-13 22:40:53.789265,BTCUSDT,Moving Average Crossover,0,HOLD,115334.0,10000,0,NONE,,,NONE

@@ -1,0 +1,48 @@
+{
+  "symbol": "BTCUSDT",
+  "start_date": "2025-11-02 23:39:05",
+  "end_date": "2025-11-17 23:39:05",
+  "interval": "15m",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 5,
+        "long_window": 40,
+        "risk_reward_ratio": 5.0
+      },
+      "final_status": {
+        "current_balance": 17256.576754634047,
+        "total_pnl": 7256.576754634047,
+        "unrealized_pnl": 0,
+        "total_value": 17256.576754634047,
+        "active_trades": 0,
+        "total_trades": 23,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "performance_metrics": {
+        "total_trades": 23,
+        "win_rate": 0.391304347826087,
+        "avg_return": 0.026057236180605844,
+        "total_pnl": 0.7256576754634046,
+        "geometric_mean_return": 0.02400570444214889,
+        "sharpe_ratio": 0.3892655535283912,
+        "max_drawdown": 0.14682777869212496,
+        "profit_factor": 2.6290972706124096,
+        "avg_win": 0.10746655180228565,
+        "avg_loss": -0.026277323861902607,
+        "largest_win": 0.11872933872278774,
+        "largest_loss": -0.03483269372864204,
+        "consecutive_wins": 3,
+        "consecutive_losses": 6,
+        "risk_reward_ratio": 4.089706865397082,
+        "calmar_ratio": 10255046.854821773,
+        "sortino_ratio": 6.482271742927182
+      },
+      "simulation_duration_sec": 426.031932,
+      "session_id": "BTCUSDT_ma_param_1_mock_20251117_233906",
+      "trade_history_csv": "ma_mock_results/BTCUSDT_ma_param_1_mock_20251117_233906_trades.csv"
+    }
+  ]
+}

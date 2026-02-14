@@ -1,0 +1,224 @@
+{
+  "ma": {
+    "strategy_name": "Moving Average Crossover",
+    "parameter_sets_tested": 5,
+    "validation_results": [
+      {
+        "parameter_set": 1,
+        "parameters": {
+          "short_window": 10,
+          "long_window": 20,
+          "risk_reward_ratio": 2.5,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 662.6852343779731,
+        "final_status": {
+          "current_balance": 0.0,
+          "total_pnl": -10000.0,
+          "unrealized_pnl": 0.0,
+          "total_value": 0.0,
+          "active_trades": 1,
+          "total_trades": 15,
+          "active_trade_info": {
+            "strategy": "Moving Average Crossover",
+            "action": "SELL",
+            "entry_price": 1133.43,
+            "quantity": 54.37133757754271,
+            "entry_time": "2025-10-26 21:15:00+05:30"
+          },
+          "can_trade": false
+        },
+        "trade_history": "    id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  Moving Average Crossover   SELL  ...     1070.63 2025-10-22 12:45:00+05:30                   NaN\n1    2  Moving Average Crossover    BUY  ...     1067.39 2025-10-22 23:15:00+05:30                   NaN\n2    3  Moving Average Crossover    BUY  ...     1089.17 2025-10-23 08:45:00+05:30                   NaN\n3    4  Moving Average Crossover   SELL  ...     1079.24 2025-10-23 19:30:00+05:30                   NaN\n4    5  Moving Average Crossover    BUY  ...     1122.74 2025-10-23 23:30:00+05:30                   NaN\n5    6  Moving Average Crossover   SELL  ...     1127.89 2025-10-24 05:00:00+05:30                   NaN\n6    7  Moving Average Crossover   SELL  ...     1132.42 2025-10-24 14:45:00+05:30                   NaN\n7    8  Moving Average Crossover    BUY  ...     1108.67 2025-10-25 03:30:00+05:30                   NaN\n8    9  Moving Average Crossover   SELL  ...     1110.00 2025-10-25 07:15:00+05:30                   NaN\n9   10  Moving Average Crossover    BUY  ...     1110.73 2025-10-25 15:30:00+05:30                   NaN\n10  11  Moving Average Crossover    BUY  ...     1112.11 2025-10-25 20:00:00+05:30                   NaN\n11  12  Moving Average Crossover    BUY  ...     1120.17 2025-10-26 06:00:00+05:30                   NaN\n12  13  Moving Average Crossover   SELL  ...     1120.75 2025-10-26 11:30:00+05:30                   NaN\n13  14  Moving Average Crossover    BUY  ...     1130.00 2025-10-26 14:45:00+05:30                   NaN\n14  15  Moving Average Crossover   SELL  ...         NaN                       NaT                   NaN\n\n[15 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 14,
+          "win_rate": 0.2857142857142857,
+          "avg_return": 0.0013352147875061052,
+          "total_pnl": -1.0,
+          "geometric_mean_return": 0.00056819027954913,
+          "sharpe_ratio": 0.03240730506340089,
+          "max_drawdown": 0.14970172957365852,
+          "profit_factor": 1.0797969329506032,
+          "avg_win": 0.06323755471217894,
+          "avg_loss": -0.02342572118236303,
+          "largest_win": 0.08145458438534452,
+          "largest_loss": -0.02941905876599322,
+          "consecutive_wins": 2,
+          "consecutive_losses": 7,
+          "risk_reward_ratio": 2.699492332376508,
+          "calmar_ratio": 7.121413797586245,
+          "sortino_ratio": 0.38667090841533824
+        },
+        "simulation_duration": 41.201578,
+        "session_id": "BNBUSDT_ma_param_1_validation_20251026_231418"
+      },
+      {
+        "parameter_set": 2,
+        "parameters": {
+          "short_window": 25,
+          "long_window": 60,
+          "risk_reward_ratio": 4.5,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 588.9510167727193,
+        "final_status": {
+          "current_balance": 9467.932516533025,
+          "total_pnl": -532.0674834669753,
+          "unrealized_pnl": 0,
+          "total_value": 9467.932516533025,
+          "active_trades": 0,
+          "total_trades": 6,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "   id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0   1  Moving Average Crossover   SELL  ...     1062.52 2025-10-23 03:30:00+05:30                  None\n1   2  Moving Average Crossover    BUY  ...     1083.86 2025-10-23 10:15:00+05:30                  None\n2   3  Moving Average Crossover   SELL  ...     1130.89 2025-10-24 18:00:00+05:30                  None\n3   4  Moving Average Crossover    BUY  ...     1112.50 2025-10-25 10:15:00+05:30                  None\n4   5  Moving Average Crossover   SELL  ...     1114.66 2025-10-25 22:30:00+05:30                  None\n5   6  Moving Average Crossover    BUY  ...     1124.47 2025-10-26 14:00:00+05:30                  None\n\n[6 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 6,
+          "win_rate": 0.16666666666666666,
+          "avg_return": -0.008321674359851506,
+          "total_pnl": -0.05320674834669753,
+          "geometric_mean_return": -0.009071029193946756,
+          "sharpe_ratio": -0.1926355003773179,
+          "max_drawdown": 0.12308746041495888,
+          "profit_factor": 0.6147953613189246,
+          "avg_win": 0.07968948887574268,
+          "avg_loss": -0.025923907006970344,
+          "largest_win": 0.07968948887574268,
+          "largest_loss": -0.02885736736553687,
+          "consecutive_wins": 1,
+          "consecutive_losses": 5,
+          "risk_reward_ratio": 3.073976806594623,
+          "calmar_ratio": -8.11381311622252,
+          "sortino_ratio": -2.78785864905491
+        },
+        "simulation_duration": 26.444694,
+        "session_id": "BNBUSDT_ma_param_2_validation_20251026_231500"
+      },
+      {
+        "parameter_set": 3,
+        "parameters": {
+          "short_window": 25,
+          "long_window": 60,
+          "risk_reward_ratio": 4.0,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 491.79925103972107,
+        "final_status": {
+          "current_balance": 9467.932516533025,
+          "total_pnl": -532.0674834669753,
+          "unrealized_pnl": 0,
+          "total_value": 9467.932516533025,
+          "active_trades": 0,
+          "total_trades": 6,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "   id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0   1  Moving Average Crossover   SELL  ...     1062.52 2025-10-23 03:30:00+05:30                  None\n1   2  Moving Average Crossover    BUY  ...     1083.86 2025-10-23 10:15:00+05:30                  None\n2   3  Moving Average Crossover   SELL  ...     1130.89 2025-10-24 18:00:00+05:30                  None\n3   4  Moving Average Crossover    BUY  ...     1112.50 2025-10-25 10:15:00+05:30                  None\n4   5  Moving Average Crossover   SELL  ...     1114.66 2025-10-25 22:30:00+05:30                  None\n5   6  Moving Average Crossover    BUY  ...     1124.47 2025-10-26 14:00:00+05:30                  None\n\n[6 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 6,
+          "win_rate": 0.16666666666666666,
+          "avg_return": -0.008321674359851506,
+          "total_pnl": -0.05320674834669753,
+          "geometric_mean_return": -0.009071029193946756,
+          "sharpe_ratio": -0.1926355003773179,
+          "max_drawdown": 0.12308746041495888,
+          "profit_factor": 0.6147953613189246,
+          "avg_win": 0.07968948887574268,
+          "avg_loss": -0.025923907006970344,
+          "largest_win": 0.07968948887574268,
+          "largest_loss": -0.02885736736553687,
+          "consecutive_wins": 1,
+          "consecutive_losses": 5,
+          "risk_reward_ratio": 3.073976806594623,
+          "calmar_ratio": -8.11381311622252,
+          "sortino_ratio": -2.78785864905491
+        },
+        "simulation_duration": 26.257062,
+        "session_id": "BNBUSDT_ma_param_3_validation_20251026_231526"
+      },
+      {
+        "parameter_set": 4,
+        "parameters": {
+          "short_window": 25,
+          "long_window": 60,
+          "risk_reward_ratio": 5.0,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 311.67862081841935,
+        "final_status": {
+          "current_balance": 9902.623560107242,
+          "total_pnl": -97.37643989275784,
+          "unrealized_pnl": 0,
+          "total_value": 9902.623560107242,
+          "active_trades": 0,
+          "total_trades": 6,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "   id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0   1  Moving Average Crossover   SELL  ...     1062.52 2025-10-23 03:30:00+05:30                  None\n1   2  Moving Average Crossover    BUY  ...     1083.86 2025-10-23 10:15:00+05:30                  None\n2   3  Moving Average Crossover   SELL  ...     1130.89 2025-10-24 18:00:00+05:30                  None\n3   4  Moving Average Crossover    BUY  ...     1112.50 2025-10-25 10:15:00+05:30                  None\n4   5  Moving Average Crossover   SELL  ...     1114.66 2025-10-25 22:30:00+05:30                  None\n5   6  Moving Average Crossover    BUY  ...     1130.00 2025-10-26 14:45:00+05:30                  None\n\n[6 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 6,
+          "win_rate": 0.16666666666666666,
+          "avg_return": -5.99032034426239e-05,
+          "total_pnl": -0.009737643989275785,
+          "geometric_mean_return": -0.0016295649631516973,
+          "sharpe_ratio": -0.0009446988129945274,
+          "max_drawdown": 0.12308746041495888,
+          "profit_factor": 0.9972271215094306,
+          "avg_win": 0.12926011581419597,
+          "avg_loss": -0.025923907006970344,
+          "largest_win": 0.12926011581419597,
+          "largest_loss": -0.02885736736553687,
+          "consecutive_wins": 1,
+          "consecutive_losses": 5,
+          "risk_reward_ratio": 4.986135607547153,
+          "calmar_ratio": -5.654084005149296,
+          "sortino_ratio": -0.020068276719565716
+        },
+        "simulation_duration": 26.304345,
+        "session_id": "BNBUSDT_ma_param_4_validation_20251026_231552"
+      },
+      {
+        "parameter_set": 5,
+        "parameters": {
+          "short_window": 20,
+          "long_window": 60,
+          "risk_reward_ratio": 5.0,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 278.46414392331,
+        "final_status": {
+          "current_balance": 9359.467669283506,
+          "total_pnl": -640.5323307164945,
+          "unrealized_pnl": 0,
+          "total_value": 9359.467669283506,
+          "active_trades": 0,
+          "total_trades": 8,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "   id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0   1  Moving Average Crossover   SELL  ...     1071.34 2025-10-23 05:00:00+05:30                  None\n1   2  Moving Average Crossover    BUY  ...     1105.36 2025-10-23 11:45:00+05:30                  None\n2   3  Moving Average Crossover   SELL  ...     1134.91 2025-10-23 20:30:00+05:30                  None\n3   4  Moving Average Crossover    BUY  ...     1122.74 2025-10-23 23:30:00+05:30                  None\n4   5  Moving Average Crossover   SELL  ...     1130.89 2025-10-24 18:00:00+05:30                  None\n5   6  Moving Average Crossover    BUY  ...     1115.12 2025-10-25 10:00:00+05:30                  None\n6   7  Moving Average Crossover   SELL  ...     1114.66 2025-10-25 22:30:00+05:30                  None\n7   8  Moving Average Crossover    BUY  ...     1130.00 2025-10-26 14:45:00+05:30                  None\n\n[8 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 8,
+          "win_rate": 0.25,
+          "avg_return": -0.004746755828906544,
+          "total_pnl": -0.06405323307164945,
+          "geometric_mean_return": -0.00824044448735628,
+          "sharpe_ratio": -0.053273404850988165,
+          "max_drawdown": 0.23543969883458188,
+          "profit_factor": 0.8631297162159106,
+          "avg_win": 0.11973573512898916,
+          "avg_loss": -0.046240919481538446,
+          "largest_win": 0.1289877286865491,
+          "largest_loss": -0.1542967005260585,
+          "consecutive_wins": 1,
+          "consecutive_losses": 5,
+          "risk_reward_ratio": 2.589389148647732,
+          "calmar_ratio": -4.246022035923001,
+          "sortino_ratio": -0.0894489925821019
+        },
+        "simulation_duration": 29.700221,
+        "session_id": "BNBUSDT_ma_param_5_validation_20251026_231619"
+      }
+    ]
+  }
+}

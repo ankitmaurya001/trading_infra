@@ -1,0 +1,16 @@
+{
+  "current_balance": 10047.66123022463,
+  "total_pnl": 47.661230224630344,
+  "unrealized_pnl": 0,
+  "total_value": 10047.66123022463,
+  "active_trades": 0,
+  "total_trades": 4,
+  "active_trade_info": null,
+  "can_trade": true,
+  "is_running": true,
+  "last_update": "2025-09-09T16:30:04.795518",
+  "session_id": "BTCUSDT_20250908_221954_live",
+  "symbol": "BTCUSDT",
+  "interval": "15m",
+  "mock_mode": false
+}

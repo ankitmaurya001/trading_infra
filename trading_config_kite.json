@@ -43,6 +43,6 @@
         "margin_check_interval_seconds": 300,
         "margin_alert_threshold_percent": 150,
         "margin_critical_threshold_percent": 110,
-        "use_gtt_for_stop_loss": true
+        "use_gtt_for_stop_loss": false
     }
 }

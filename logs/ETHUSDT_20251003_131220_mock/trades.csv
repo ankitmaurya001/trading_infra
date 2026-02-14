@@ -1,0 +1,2 @@
+timestamp,symbol,strategy,action,price,quantity,leverage,position_size,atr,balance,pnl,trade_id,status
+2025-09-23 20:45:00+05:30,ETHUSDT,Moving Average Crossover,SELL,4192.99,9.800069122588255,4.109159183032133,41091.591830321326,20.40801932090647,0.0,0,1,open

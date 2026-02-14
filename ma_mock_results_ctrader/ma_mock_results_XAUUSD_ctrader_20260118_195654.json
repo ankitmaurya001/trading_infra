@@ -1,0 +1,49 @@
+{
+  "symbol": "XAUUSD",
+  "start_date": "2025-11-19",
+  "end_date": "2026-01-18",
+  "interval": "15m",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 12,
+        "long_window": 38,
+        "risk_reward_ratio": 6.5
+      },
+      "final_status": {
+        "current_balance": 8945.342103278183,
+        "total_pnl": -1054.6578967218175,
+        "unrealized_pnl": 0,
+        "total_value": 8945.342103278183,
+        "active_trades": 0,
+        "total_trades": 27,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "performance_metrics": {
+        "total_trades": 27,
+        "win_rate": 0.14814814814814814,
+        "avg_return": -0.002820426465296277,
+        "total_pnl": -0.10546578967218175,
+        "geometric_mean_return": -0.004119348834672687,
+        "sharpe_ratio": -0.0525916569223464,
+        "max_drawdown": 0.25928801299456694,
+        "profit_factor": 0.8640315751064687,
+        "avg_win": 0.12097903084141307,
+        "avg_loss": -0.024350766866463116,
+        "largest_win": 0.1355004125016192,
+        "largest_loss": -0.04151273533628148,
+        "consecutive_wins": 1,
+        "consecutive_losses": 10,
+        "risk_reward_ratio": 4.968181556862194,
+        "calmar_ratio": -3.098952648284624,
+        "sortino_ratio": -0.41167946426211327
+      },
+      "simulation_duration_sec": 289.448787,
+      "session_id": "XAUUSD_ctrader_ma_param_1_mock_20260118_195205",
+      "trade_history_csv": "ma_mock_results_ctrader/XAUUSD_ctrader_ma_param_1_mock_20260118_195205_trades.csv"
+    }
+  ],
+  "failed_results": []
+}

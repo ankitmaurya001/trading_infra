@@ -1,0 +1,22 @@
+{
+  "current_balance": 0,
+  "total_pnl": -10000,
+  "unrealized_pnl": -2.096582570409737,
+  "total_value": -2.096582570409737,
+  "active_trades": 1,
+  "total_trades": 1,
+  "active_trade_info": {
+    "strategy": "Moving Average Crossover",
+    "action": "SELL",
+    "entry_price": 715.45,
+    "quantity": 13.977217136068209,
+    "entry_time": "2025-09-09 12:00:09.680525"
+  },
+  "can_trade": false,
+  "is_running": true,
+  "last_update": "2025-09-09T15:15:04.535761",
+  "session_id": "TATAMOTORS_20250909_092031_live",
+  "symbol": "TATAMOTORS",
+  "interval": "15minute",
+  "mock_mode": false
+}

@@ -1,0 +1,218 @@
+{
+  "ma": {
+    "strategy_name": "Moving Average Crossover",
+    "parameter_sets_tested": 5,
+    "validation_results": [
+      {
+        "parameter_set": 1,
+        "parameters": {
+          "short_window": 25,
+          "long_window": 30,
+          "risk_reward_ratio": 5.0,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 17933.011734628166,
+        "final_status": {
+          "current_balance": 9402.810124917864,
+          "total_pnl": -597.1898750821365,
+          "unrealized_pnl": 0,
+          "total_value": 9402.810124917864,
+          "active_trades": 0,
+          "total_trades": 12,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "    id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  Moving Average Crossover    BUY  ...      182.52 2025-10-22 19:45:00+05:30                  None\n1    2  Moving Average Crossover   SELL  ...      186.26 2025-10-23 11:45:00+05:30                  None\n2    3  Moving Average Crossover   SELL  ...      190.43 2025-10-24 04:15:00+05:30                  None\n3    4  Moving Average Crossover    BUY  ...      191.54 2025-10-24 08:45:00+05:30                  None\n4    5  Moving Average Crossover   SELL  ...      193.36 2025-10-24 14:00:00+05:30                  None\n5    6  Moving Average Crossover   SELL  ...      192.89 2025-10-24 17:30:00+05:30                  None\n6    7  Moving Average Crossover    BUY  ...      192.78 2025-10-25 05:45:00+05:30                  None\n7    8  Moving Average Crossover   SELL  ...      194.47 2025-10-25 11:15:00+05:30                  None\n8    9  Moving Average Crossover   SELL  ...      192.64 2025-10-25 16:45:00+05:30                  None\n9   10  Moving Average Crossover    BUY  ...      194.60 2025-10-26 02:30:00+05:30                  None\n10  11  Moving Average Crossover   SELL  ...      194.07 2025-10-26 12:15:00+05:30                  None\n11  12  Moving Average Crossover    BUY  ...      196.10 2025-10-26 14:45:00+05:30                  None\n\n[12 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 12,
+          "win_rate": 0.16666666666666666,
+          "avg_return": -0.003956978871922818,
+          "total_pnl": -0.05971898750821365,
+          "geometric_mean_return": -0.005118231897216163,
+          "sharpe_ratio": -0.07664842073647296,
+          "max_drawdown": 0.21505394531137756,
+          "profit_factor": 0.816566343863211,
+          "avg_win": 0.10568842724632233,
+          "avg_loss": -0.025886060095571845,
+          "largest_win": 0.1091476827442376,
+          "largest_loss": -0.040571557154738445,
+          "consecutive_wins": 1,
+          "consecutive_losses": 9,
+          "risk_reward_ratio": 4.082831719316055,
+          "calmar_ratio": -4.647403070682219,
+          "sortino_ratio": -0.5661825673795001
+        },
+        "simulation_duration": 41.008219,
+        "session_id": "SOLUSDT_ma_param_1_validation_20251026_230329"
+      },
+      {
+        "parameter_set": 2,
+        "parameters": {
+          "short_window": 5,
+          "long_window": 40,
+          "risk_reward_ratio": 3.0,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 13005.170585569898,
+        "final_status": {
+          "current_balance": 8773.35797431571,
+          "total_pnl": -1226.6420256842903,
+          "unrealized_pnl": 0,
+          "total_value": 8773.35797431571,
+          "active_trades": 0,
+          "total_trades": 11,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "    id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  Moving Average Crossover    BUY  ...      182.52 2025-10-22 19:45:00+05:30                  None\n1    2  Moving Average Crossover   SELL  ...      185.50 2025-10-22 20:15:00+05:30                  None\n2    3  Moving Average Crossover    BUY  ...      185.36 2025-10-23 11:30:00+05:30                  None\n3    4  Moving Average Crossover   SELL  ...      190.12 2025-10-24 04:00:00+05:30                  None\n4    5  Moving Average Crossover    BUY  ...      193.85 2025-10-24 10:00:00+05:30                  None\n5    6  Moving Average Crossover   SELL  ...      192.89 2025-10-24 17:30:00+05:30                  None\n6    7  Moving Average Crossover    BUY  ...      191.73 2025-10-24 19:00:00+05:30                  None\n7    8  Moving Average Crossover   SELL  ...      193.14 2025-10-25 00:45:00+05:30                  None\n8    9  Moving Average Crossover   SELL  ...      192.64 2025-10-25 16:45:00+05:30                  None\n9   10  Moving Average Crossover    BUY  ...      193.30 2025-10-26 06:15:00+05:30                  None\n10  11  Moving Average Crossover   SELL  ...      194.07 2025-10-26 12:15:00+05:30                  None\n\n[11 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 11,
+          "win_rate": 0.18181818181818182,
+          "avg_return": -0.011132284284011012,
+          "total_pnl": -0.12266420256842903,
+          "geometric_mean_return": -0.011826372757619996,
+          "sharpe_ratio": -0.28135026417876174,
+          "max_drawdown": 0.14320749523839074,
+          "profit_factor": 0.5224111476806871,
+          "avg_win": 0.06697384496060779,
+          "avg_loss": -0.0284892018939263,
+          "largest_win": 0.07162870389635946,
+          "largest_loss": -0.04776481850011628,
+          "consecutive_wins": 1,
+          "consecutive_losses": 6,
+          "risk_reward_ratio": 2.350850164563092,
+          "calmar_ratio": -6.9828738828702654,
+          "sortino_ratio": -1.1901609364871062
+        },
+        "simulation_duration": 34.667517,
+        "session_id": "SOLUSDT_ma_param_2_validation_20251026_230410"
+      },
+      {
+        "parameter_set": 3,
+        "parameters": {
+          "short_window": 5,
+          "long_window": 40,
+          "risk_reward_ratio": 4.0,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 9427.95000986082,
+        "final_status": {
+          "current_balance": 8902.724749765972,
+          "total_pnl": -1097.2752502340281,
+          "unrealized_pnl": 0,
+          "total_value": 8902.724749765972,
+          "active_trades": 0,
+          "total_trades": 8,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "   id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0   1  Moving Average Crossover    BUY  ...      182.52 2025-10-22 19:45:00+05:30                  None\n1   2  Moving Average Crossover   SELL  ...      185.50 2025-10-22 20:15:00+05:30                  None\n2   3  Moving Average Crossover    BUY  ...      186.35 2025-10-23 12:00:00+05:30                  None\n3   4  Moving Average Crossover   SELL  ...      190.12 2025-10-24 04:00:00+05:30                  None\n4   5  Moving Average Crossover    BUY  ...      190.18 2025-10-24 20:15:00+05:30                  None\n5   6  Moving Average Crossover    BUY  ...      191.69 2025-10-25 15:30:00+05:30                  None\n6   7  Moving Average Crossover    BUY  ...      193.30 2025-10-26 06:15:00+05:30                  None\n7   8  Moving Average Crossover   SELL  ...      194.07 2025-10-26 12:15:00+05:30                  None\n\n[8 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 8,
+          "win_rate": 0.125,
+          "avg_return": -0.013777776988437787,
+          "total_pnl": -0.10972752502340281,
+          "geometric_mean_return": -0.014423435050673228,
+          "sharpe_ratio": -0.3526829696851884,
+          "max_drawdown": 0.10972752502340277,
+          "profit_factor": 0.4213328680181413,
+          "avg_win": 0.08025381049131133,
+          "avg_loss": -0.02721086091411623,
+          "largest_win": 0.08025381049131133,
+          "largest_loss": -0.04776481850011628,
+          "consecutive_wins": 1,
+          "consecutive_losses": 5,
+          "risk_reward_ratio": 2.949330076126989,
+          "calmar_ratio": -9.11347702083429,
+          "sortino_ratio": -1.4040182057281938
+        },
+        "simulation_duration": 37.036446,
+        "session_id": "SOLUSDT_ma_param_3_validation_20251026_230445"
+      },
+      {
+        "parameter_set": 4,
+        "parameters": {
+          "short_window": 5,
+          "long_window": 40,
+          "risk_reward_ratio": 3.5,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 9202.172056243344,
+        "final_status": {
+          "current_balance": 8908.010762928254,
+          "total_pnl": -1091.9892370717462,
+          "unrealized_pnl": 0,
+          "total_value": 8908.010762928254,
+          "active_trades": 0,
+          "total_trades": 11,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "    id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  Moving Average Crossover    BUY  ...      182.52 2025-10-22 19:45:00+05:30                  None\n1    2  Moving Average Crossover   SELL  ...      185.50 2025-10-22 20:15:00+05:30                  None\n2    3  Moving Average Crossover    BUY  ...      186.26 2025-10-23 11:45:00+05:30                  None\n3    4  Moving Average Crossover   SELL  ...      190.12 2025-10-24 04:00:00+05:30                  None\n4    5  Moving Average Crossover    BUY  ...      193.85 2025-10-24 10:00:00+05:30                  None\n5    6  Moving Average Crossover   SELL  ...      192.89 2025-10-24 17:30:00+05:30                  None\n6    7  Moving Average Crossover    BUY  ...      191.73 2025-10-24 19:00:00+05:30                  None\n7    8  Moving Average Crossover   SELL  ...      193.14 2025-10-25 00:45:00+05:30                  None\n8    9  Moving Average Crossover   SELL  ...      192.64 2025-10-25 16:45:00+05:30                  None\n9   10  Moving Average Crossover    BUY  ...      193.30 2025-10-26 06:15:00+05:30                  None\n10  11  Moving Average Crossover   SELL  ...      194.07 2025-10-26 12:15:00+05:30                  None\n\n[11 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 11,
+          "win_rate": 0.18181818181818182,
+          "avg_return": -0.009650067385956872,
+          "total_pnl": -0.10919892370717461,
+          "geometric_mean_return": -0.01045713411443483,
+          "sharpe_ratio": -0.22562797185028585,
+          "max_drawdown": 0.14320749523839088,
+          "profit_factor": 0.586000097546681,
+          "avg_win": 0.07512603789990557,
+          "avg_loss": -0.028489201893926303,
+          "largest_win": 0.07862337190345167,
+          "largest_loss": -0.04776481850011628,
+          "consecutive_wins": 1,
+          "consecutive_losses": 6,
+          "risk_reward_ratio": 2.6370004389600648,
+          "calmar_ratio": -6.982869312165174,
+          "sortino_ratio": -1.0316960063380602
+        },
+        "simulation_duration": 34.244082,
+        "session_id": "SOLUSDT_ma_param_4_validation_20251026_230522"
+      },
+      {
+        "parameter_set": 5,
+        "parameters": {
+          "short_window": 25,
+          "long_window": 30,
+          "risk_reward_ratio": 4.5,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 7066.407755606852,
+        "final_status": {
+          "current_balance": 9075.97501900705,
+          "total_pnl": -924.0249809929501,
+          "unrealized_pnl": 0,
+          "total_value": 9075.97501900705,
+          "active_trades": 0,
+          "total_trades": 13,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "    id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  Moving Average Crossover    BUY  ...      182.52 2025-10-22 19:45:00+05:30                  None\n1    2  Moving Average Crossover   SELL  ...      186.26 2025-10-23 11:45:00+05:30                  None\n2    3  Moving Average Crossover   SELL  ...      190.43 2025-10-24 04:15:00+05:30                  None\n3    4  Moving Average Crossover    BUY  ...      191.54 2025-10-24 08:45:00+05:30                  None\n4    5  Moving Average Crossover   SELL  ...      193.36 2025-10-24 14:00:00+05:30                  None\n5    6  Moving Average Crossover   SELL  ...      192.89 2025-10-24 17:30:00+05:30                  None\n6    7  Moving Average Crossover    BUY  ...      192.78 2025-10-25 05:45:00+05:30                  None\n7    8  Moving Average Crossover   SELL  ...      194.47 2025-10-25 11:15:00+05:30                  None\n8    9  Moving Average Crossover   SELL  ...      192.64 2025-10-25 16:45:00+05:30                  None\n9   10  Moving Average Crossover    BUY  ...      194.36 2025-10-26 00:45:00+05:30                  None\n10  11  Moving Average Crossover    BUY  ...      193.94 2025-10-26 03:00:00+05:30                  None\n11  12  Moving Average Crossover   SELL  ...      194.07 2025-10-26 12:15:00+05:30                  None\n12  13  Moving Average Crossover    BUY  ...      196.10 2025-10-26 14:45:00+05:30                  None\n\n[13 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 13,
+          "win_rate": 0.15384615384615385,
+          "avg_return": -0.006409034663930831,
+          "total_pnl": -0.092402498099295,
+          "geometric_mean_return": -0.0074302793912972565,
+          "sharpe_ratio": -0.13295032609081753,
+          "max_drawdown": 0.21505394531137756,
+          "profit_factor": 0.7081753308632472,
+          "avg_win": 0.10109385772954033,
+          "avg_loss": -0.02595501509910741,
+          "largest_win": 0.1091476827442376,
+          "largest_loss": -0.040571557154738445,
+          "consecutive_wins": 1,
+          "consecutive_losses": 9,
+          "risk_reward_ratio": 3.8949643197478596,
+          "calmar_ratio": -4.649961035118584,
+          "sortino_ratio": -0.9660640556241589
+        },
+        "simulation_duration": 40.080642,
+        "session_id": "SOLUSDT_ma_param_5_validation_20251026_230556"
+      }
+    ]
+  }
+}

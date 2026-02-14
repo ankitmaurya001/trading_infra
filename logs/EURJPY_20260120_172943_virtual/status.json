@@ -1,0 +1,16 @@
+{
+  "current_balance": 10000,
+  "total_pnl": 0,
+  "unrealized_pnl": 0,
+  "total_value": 10000,
+  "active_trades": 0,
+  "total_trades": 0,
+  "active_trade_info": null,
+  "can_trade": true,
+  "is_running": false,
+  "last_update": "2026-01-20T17:29:43.936771+00:00",
+  "session_id": "EURJPY_20260120_172943_virtual",
+  "symbol": "EURJPY",
+  "interval": "30m",
+  "live_trading": false
+}

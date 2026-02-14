@@ -1,0 +1,2 @@
+timestamp,symbol,strategy,action,price,quantity,balance,pnl,trade_id,status
+2025-09-09 12:00:09.680525,TATAMOTORS,Moving Average Crossover,SELL,715.45,13.977217136068209,0,0,1,open

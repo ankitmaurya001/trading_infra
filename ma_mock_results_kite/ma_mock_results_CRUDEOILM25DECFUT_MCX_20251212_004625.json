@@ -1,0 +1,49 @@
+{
+  "symbol": "CRUDEOILM25DECFUT",
+  "exchange": "MCX",
+  "start_date": "2025-11-12",
+  "end_date": "2025-12-12",
+  "interval": "15minute",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 26,
+        "long_window": 41,
+        "risk_reward_ratio": 6.0
+      },
+      "final_status": {
+        "current_balance": 7406.776219752292,
+        "total_pnl": -2593.2237802477084,
+        "unrealized_pnl": 0,
+        "total_value": 7406.776219752292,
+        "active_trades": 0,
+        "total_trades": 25,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "performance_metrics": {
+        "total_trades": 25,
+        "win_rate": 0.12,
+        "avg_return": -0.01056937097364617,
+        "total_pnl": -0.2593223780247708,
+        "geometric_mean_return": -0.011935788803551062,
+        "sharpe_ratio": -0.19238229685231484,
+        "max_drawdown": 0.36029239977114985,
+        "profit_factor": 0.596792284654518,
+        "avg_win": 0.1303653760138406,
+        "avg_loss": -0.029787745562848914,
+        "largest_win": 0.14453334519946595,
+        "largest_loss": -0.0815629438731116,
+        "consecutive_wins": 1,
+        "consecutive_losses": 11,
+        "risk_reward_ratio": 4.376476754133131,
+        "calmar_ratio": -2.734489823787321,
+        "sortino_ratio": -0.7288569975587611
+      },
+      "simulation_duration_sec": 317.353523,
+      "session_id": "CRUDEOILM25DECFUT_MCX_ma_param_1_mock_20251212_004108",
+      "trade_history_csv": "ma_mock_results_kite/CRUDEOILM25DECFUT_MCX_ma_param_1_mock_20251212_004108_trades.csv"
+    }
+  ]
+}

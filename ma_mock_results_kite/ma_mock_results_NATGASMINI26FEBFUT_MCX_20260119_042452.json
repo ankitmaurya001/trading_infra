@@ -1,0 +1,50 @@
+{
+  "symbol": "NATGASMINI26FEBFUT",
+  "exchange": "MCX",
+  "start_date": "2025-11-20",
+  "end_date": "2026-01-19",
+  "interval": "15minute",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 26,
+        "long_window": 107,
+        "risk_reward_ratio": 7.0
+      },
+      "final_status": {
+        "current_balance": 16581.169711630875,
+        "total_pnl": 6581.169711630875,
+        "unrealized_pnl": 0,
+        "total_value": 16581.169711630875,
+        "active_trades": 0,
+        "total_trades": 6,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "performance_metrics": {
+        "total_trades": 6,
+        "win_rate": 0.6666666666666666,
+        "avg_return": 0.09174254355887888,
+        "total_pnl": 0.6581169711630875,
+        "geometric_mean_return": 0.08793394466148907,
+        "sharpe_ratio": 0.9365382457804,
+        "max_drawdown": 0.038595401855739786,
+        "profit_factor": 9.149932380863499,
+        "avg_win": 0.1544990861488398,
+        "avg_loss": -0.033770541621042975,
+        "largest_win": 0.17600019663460678,
+        "largest_loss": -0.03859540185573984,
+        "consecutive_wins": 2,
+        "consecutive_losses": 1,
+        "risk_reward_ratio": 4.574966190431749,
+        "calmar_ratio": 1345001.696602348,
+        "sortino_ratio": 13.445316862709332
+      },
+      "simulation_duration_sec": 188.318439,
+      "session_id": "NATGASMINI26FEBFUT_MCX_ma_param_1_mock_20260119_042143",
+      "trade_history_csv": "ma_mock_results_kite/NATGASMINI26FEBFUT_MCX_ma_param_1_mock_20260119_042143_trades.csv"
+    }
+  ],
+  "failed_results": []
+}

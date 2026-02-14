@@ -1,0 +1,218 @@
+{
+  "ma": {
+    "strategy_name": "Moving Average Crossover",
+    "parameter_sets_tested": 5,
+    "validation_results": [
+      {
+        "parameter_set": 1,
+        "parameters": {
+          "short_window": 5,
+          "long_window": 60,
+          "risk_reward_ratio": 3.5,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 312.1519389000037,
+        "final_status": {
+          "current_balance": 10443.036192699445,
+          "total_pnl": 443.03619269944465,
+          "unrealized_pnl": 0,
+          "total_value": 10443.036192699445,
+          "active_trades": 0,
+          "total_trades": 9,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "   id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0   1  Moving Average Crossover    BUY  ...     3918.26 2025-10-23 22:15:00+05:30                  None\n1   2  Moving Average Crossover   SELL  ...     3881.72 2025-10-24 07:15:00+05:30                  None\n2   3  Moving Average Crossover   SELL  ...     3939.67 2025-10-25 01:45:00+05:30                  None\n3   4  Moving Average Crossover    BUY  ...     3919.90 2025-10-25 05:45:00+05:30                  None\n4   5  Moving Average Crossover    BUY  ...     3921.20 2025-10-25 09:15:00+05:30                  None\n5   6  Moving Average Crossover   SELL  ...     3938.98 2025-10-25 22:30:00+05:30                  None\n6   7  Moving Average Crossover    BUY  ...     3945.46 2025-10-26 02:15:00+05:30                  None\n7   8  Moving Average Crossover   SELL  ...     3939.93 2025-10-26 10:15:00+05:30                  None\n8   9  Moving Average Crossover    BUY  ...     4003.15 2025-10-26 14:45:00+05:30                  None\n\n[9 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 9,
+          "win_rate": 0.2222222222222222,
+          "avg_return": 0.006308326830838679,
+          "total_pnl": 0.044303619269944465,
+          "geometric_mean_return": 0.004828315623771617,
+          "sharpe_ratio": 0.10627155014118153,
+          "max_drawdown": 0.15038389536787944,
+          "profit_factor": 1.3526691861676936,
+          "avg_win": 0.10888066904523408,
+          "avg_loss": -0.022998056658988582,
+          "largest_win": 0.13053039677900155,
+          "largest_loss": -0.03559208649007046,
+          "consecutive_wins": 1,
+          "consecutive_losses": 7,
+          "risk_reward_ratio": 4.734342151586928,
+          "calmar_ratio": 18135.41019519538,
+          "sortino_ratio": 1.099079063331401
+        },
+        "simulation_duration": 34.762158,
+        "session_id": "ETHUSDT_ma_param_1_validation_20251026_223839"
+      },
+      {
+        "parameter_set": 2,
+        "parameters": {
+          "short_window": 30,
+          "long_window": 40,
+          "risk_reward_ratio": 4.5,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 209.71648157752483,
+        "final_status": {
+          "current_balance": 10148.789228166683,
+          "total_pnl": 148.78922816668273,
+          "unrealized_pnl": 0,
+          "total_value": 10148.789228166683,
+          "active_trades": 0,
+          "total_trades": 7,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "   id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0   1  Moving Average Crossover    BUY  ...     3815.10 2025-10-23 19:30:00+05:30                  None\n1   2  Moving Average Crossover   SELL  ...     3918.26 2025-10-23 22:15:00+05:30                  None\n2   3  Moving Average Crossover    BUY  ...     3829.20 2025-10-24 02:15:00+05:30                  None\n3   4  Moving Average Crossover   SELL  ...     3862.37 2025-10-24 06:00:00+05:30                  None\n4   5  Moving Average Crossover    BUY  ...     3963.21 2025-10-24 10:00:00+05:30                  None\n5   6  Moving Average Crossover   SELL  ...     4003.15 2025-10-26 14:45:00+05:30                  None\n6   7  Moving Average Crossover    BUY  ...     4054.02 2025-10-26 17:45:00+05:30                  None\n\n[7 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 7,
+          "win_rate": 0.2857142857142857,
+          "avg_return": 0.0041732325977035445,
+          "total_pnl": 0.014878922816668274,
+          "geometric_mean_return": 0.0021121299124102766,
+          "sharpe_ratio": 0.05897471964864876,
+          "max_drawdown": 0.12979586579905655,
+          "profit_factor": 1.1595932790226888,
+          "avg_win": 0.10612842693661353,
+          "avg_loss": -0.036608845137860446,
+          "largest_win": 0.11499882830889441,
+          "largest_loss": -0.04756914400755368,
+          "consecutive_wins": 1,
+          "consecutive_losses": 4,
+          "risk_reward_ratio": 2.898983197556722,
+          "calmar_ratio": 106.40900361639493,
+          "sortino_ratio": 0.2985649658998251
+        },
+        "simulation_duration": 35.943178,
+        "session_id": "ETHUSDT_ma_param_2_validation_20251026_223913"
+      },
+      {
+        "parameter_set": 3,
+        "parameters": {
+          "short_window": 30,
+          "long_window": 40,
+          "risk_reward_ratio": 5.0,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 195.57018650761742,
+        "final_status": {
+          "current_balance": 10405.554130394143,
+          "total_pnl": 405.5541303941427,
+          "unrealized_pnl": 0,
+          "total_value": 10405.554130394143,
+          "active_trades": 0,
+          "total_trades": 7,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "   id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0   1  Moving Average Crossover    BUY  ...     3815.10 2025-10-23 19:30:00+05:30                  None\n1   2  Moving Average Crossover   SELL  ...     3918.26 2025-10-23 22:15:00+05:30                  None\n2   3  Moving Average Crossover    BUY  ...     3829.20 2025-10-24 02:15:00+05:30                  None\n3   4  Moving Average Crossover   SELL  ...     3862.37 2025-10-24 06:00:00+05:30                  None\n4   5  Moving Average Crossover    BUY  ...     3963.21 2025-10-24 10:00:00+05:30                  None\n5   6  Moving Average Crossover   SELL  ...     4003.15 2025-10-26 14:45:00+05:30                  None\n6   7  Moving Average Crossover    BUY  ...     4072.89 2025-10-26 18:15:00+05:30                  None\n\n[7 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 7,
+          "win_rate": 0.2857142857142857,
+          "avg_return": 0.008139044863837786,
+          "total_pnl": 0.04055541303941427,
+          "geometric_mean_return": 0.005695389065738077,
+          "sharpe_ratio": 0.10526010382728015,
+          "max_drawdown": 0.12979586579905655,
+          "profit_factor": 1.3112543639785204,
+          "avg_win": 0.12000876986808337,
+          "avg_loss": -0.036608845137860446,
+          "largest_win": 0.12501871142727233,
+          "largest_loss": -0.04756914400755368,
+          "consecutive_wins": 1,
+          "consecutive_losses": 4,
+          "risk_reward_ratio": 3.2781359099463008,
+          "calmar_ratio": 10897.667339152327,
+          "sortino_ratio": 0.5822904895274899
+        },
+        "simulation_duration": 35.969625,
+        "session_id": "ETHUSDT_ma_param_3_validation_20251026_223949"
+      },
+      {
+        "parameter_set": 4,
+        "parameters": {
+          "short_window": 30,
+          "long_window": 40,
+          "risk_reward_ratio": 4.0,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 168.90847539695594,
+        "final_status": {
+          "current_balance": 11357.799367508776,
+          "total_pnl": 1357.7993675087764,
+          "unrealized_pnl": 0,
+          "total_value": 11357.799367508776,
+          "active_trades": 0,
+          "total_trades": 7,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "   id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0   1  Moving Average Crossover    BUY  ...     3896.10 2025-10-23 13:45:00+05:30                  None\n1   2  Moving Average Crossover   SELL  ...     3918.26 2025-10-23 22:15:00+05:30                  None\n2   3  Moving Average Crossover    BUY  ...     3829.20 2025-10-24 02:15:00+05:30                  None\n3   4  Moving Average Crossover   SELL  ...     3862.37 2025-10-24 06:00:00+05:30                  None\n4   5  Moving Average Crossover    BUY  ...     3963.21 2025-10-24 10:00:00+05:30                  None\n5   6  Moving Average Crossover   SELL  ...     4003.15 2025-10-26 14:45:00+05:30                  None\n6   7  Moving Average Crossover    BUY  ...     4044.99 2025-10-26 17:15:00+05:30                  None\n\n[7 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 7,
+          "win_rate": 0.42857142857142855,
+          "avg_return": 0.020378193621658876,
+          "total_pnl": 0.13577993675087763,
+          "geometric_mean_return": 0.01835493040423186,
+          "sharpe_ratio": 0.29198644545975766,
+          "max_drawdown": 0.08773697731523161,
+          "profit_factor": 2.0416753479987904,
+          "avg_win": 0.09319589173924592,
+          "avg_loss": -0.03423507996653141,
+          "largest_win": 0.1149988283088944,
+          "largest_loss": -0.04756914400755368,
+          "consecutive_wins": 1,
+          "consecutive_losses": 3,
+          "risk_reward_ratio": 2.7222337973317203,
+          "calmar_ratio": 60852351.42430403,
+          "sortino_ratio": 1.364826682702307
+        },
+        "simulation_duration": 33.75015,
+        "session_id": "ETHUSDT_ma_param_4_validation_20251026_224025"
+      },
+      {
+        "parameter_set": 5,
+        "parameters": {
+          "short_window": 10,
+          "long_window": 50,
+          "risk_reward_ratio": 3.5,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 145.78528260897593,
+        "final_status": {
+          "current_balance": 10643.253956984261,
+          "total_pnl": 643.2539569842611,
+          "unrealized_pnl": 0,
+          "total_value": 10643.253956984261,
+          "active_trades": 0,
+          "total_trades": 12,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "    id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  Moving Average Crossover    BUY  ...     3894.54 2025-10-23 13:30:00+05:30                  None\n1    2  Moving Average Crossover   SELL  ...     3865.49 2025-10-23 20:30:00+05:30                  None\n2    3  Moving Average Crossover    BUY  ...     3887.69 2025-10-23 22:30:00+05:30                  None\n3    4  Moving Average Crossover   SELL  ...     3873.31 2025-10-24 06:30:00+05:30                  None\n4    5  Moving Average Crossover    BUY  ...     3963.21 2025-10-24 10:00:00+05:30                  None\n5    6  Moving Average Crossover   SELL  ...     3934.78 2025-10-25 00:45:00+05:30                  None\n6    7  Moving Average Crossover    BUY  ...     3919.90 2025-10-25 05:45:00+05:30                  None\n7    8  Moving Average Crossover   SELL  ...     3941.61 2025-10-25 12:45:00+05:30                  None\n8    9  Moving Average Crossover   SELL  ...     3945.56 2025-10-25 23:45:00+05:30                  None\n9   10  Moving Average Crossover    BUY  ...     3945.46 2025-10-26 02:15:00+05:30                  None\n10  11  Moving Average Crossover   SELL  ...     3942.73 2025-10-26 10:45:00+05:30                  None\n11  12  Moving Average Crossover    BUY  ...     4003.15 2025-10-26 14:45:00+05:30                  None\n\n[12 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 12,
+          "win_rate": 0.25,
+          "avg_return": 0.006850962699333534,
+          "total_pnl": 0.06432539569842612,
+          "geometric_mean_return": 0.005208615182456855,
+          "sharpe_ratio": 0.11142182618110598,
+          "max_drawdown": 0.15716883741318655,
+          "profit_factor": 1.3470435957935962,
+          "avg_win": 0.10636756351091649,
+          "avg_loss": -0.02632123757119412,
+          "largest_win": 0.12660553508888323,
+          "largest_loss": -0.03579839849269887,
+          "consecutive_wins": 1,
+          "consecutive_losses": 6,
+          "risk_reward_ratio": 4.041130787380788,
+          "calmar_ratio": 12516.066748825566,
+          "sortino_ratio": 1.2723727664421967
+        },
+        "simulation_duration": 34.057448,
+        "session_id": "ETHUSDT_ma_param_5_validation_20251026_224059"
+      }
+    ]
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "ma": {
+    "strategy_name": "Moving Average Crossover",
+    "parameters": {
+      "short_window": 30,
+      "long_window": 40,
+      "risk_reward_ratio": 3.5,
+      "trading_fee": 0.0
+    },
+    "final_status": {
+      "current_balance": 12727.061613542093,
+      "total_pnl": 2727.0616135420933,
+      "unrealized_pnl": 0,
+      "total_value": 12727.061613542093,
+      "active_trades": 0,
+      "total_trades": 17,
+      "active_trade_info": null,
+      "can_trade": true
+    },
+    "trade_history": "    id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  Moving Average Crossover   SELL  ...     4138.01 2025-10-15 13:30:00+05:30                  None\n1    2  Moving Average Crossover    BUY  ...     4153.50 2025-10-15 14:45:00+05:30                  None\n2    3  Moving Average Crossover   SELL  ...     4058.87 2025-10-16 15:30:00+05:30                  None\n3    4  Moving Average Crossover   SELL  ...     3954.00 2025-10-16 21:00:00+05:30                  None\n4    5  Moving Average Crossover   SELL  ...     3756.49 2025-10-17 13:15:00+05:30                  None\n5    6  Moving Average Crossover   SELL  ...     3777.43 2025-10-17 16:30:00+05:30                  None\n6    7  Moving Average Crossover    BUY  ...     3934.66 2025-10-19 15:45:00+05:30                  None\n7    8  Moving Average Crossover   SELL  ...     3946.50 2025-10-19 19:00:00+05:30                  None\n8    9  Moving Average Crossover   SELL  ...     3979.30 2025-10-20 09:00:00+05:30                  None\n9   10  Moving Average Crossover    BUY  ...     4047.74 2025-10-20 13:30:00+05:30                  None\n10  11  Moving Average Crossover   SELL  ...     3974.94 2025-10-20 21:30:00+05:30                  None\n11  12  Moving Average Crossover    BUY  ...     3937.77 2025-10-21 07:30:00+05:30                  None\n12  13  Moving Average Crossover   SELL  ...     3878.95 2025-10-21 09:30:00+05:30                  None\n13  14  Moving Average Crossover    BUY  ...     3866.03 2025-10-21 19:15:00+05:30                  None\n14  15  Moving Average Crossover   SELL  ...     3743.35 2025-10-23 02:30:00+05:30                  None\n15  16  Moving Average Crossover    BUY  ...     3891.41 2025-10-23 12:15:00+05:30                  None\n16  17  Moving Average Crossover   SELL  ...     3918.26 2025-10-23 22:15:00+05:30                  None\n\n[17 rows x 18 columns]",
+    "performance_metrics": {
+      "total_trades": 17,
+      "win_rate": 0.4117647058823529,
+      "avg_return": 0.015740573864094755,
+      "total_pnl": 0.27270616135420933,
+      "geometric_mean_return": 0.014286112500846215,
+      "sharpe_ratio": 0.2793324140154388,
+      "max_drawdown": 0.09434096096598317,
+      "profit_factor": 1.9040779403888448,
+      "avg_win": 0.0805100862785422,
+      "avg_loss": -0.029598084826018455,
+      "largest_win": 0.09316510332762573,
+      "largest_loss": -0.04756914400614154,
+      "consecutive_wins": 2,
+      "consecutive_losses": 3,
+      "risk_reward_ratio": 2.7201113434126354,
+      "calmar_ratio": 636083.537422159,
+      "sortino_ratio": 1.9991888163562592
+    },
+    "simulation_duration": 91.244556,
+    "test_data_points": 865,
+    "session_id": "ETHUSDT_ma_validation_20251023_232209"
+  },
+  "rsi": {
+    "strategy_name": "RSI Strategy",
+    "parameters": {
+      "period": 20,
+      "overbought": 65,
+      "oversold": 35,
+      "risk_reward_ratio": 2.0,
+      "trading_fee": 0.0
+    },
+    "final_status": {
+      "current_balance": 7711.727507385422,
+      "total_pnl": -2288.2724926145784,
+      "unrealized_pnl": 0,
+      "total_value": 7711.727507385422,
+      "active_trades": 0,
+      "total_trades": 29,
+      "active_trade_info": null,
+      "can_trade": true
+    },
+    "trade_history": "    id      strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  RSI Strategy   SELL  ...     4123.22 2025-10-15 16:00:00+05:30                  None\n1    2  RSI Strategy    BUY  ...     4055.23 2025-10-15 19:15:00+05:30                  None\n2    3  RSI Strategy    BUY  ...     3960.75 2025-10-16 01:45:00+05:30                  None\n3    4  RSI Strategy   SELL  ...     4042.08 2025-10-16 12:15:00+05:30                  None\n4    5  RSI Strategy   SELL  ...     3987.71 2025-10-16 19:30:00+05:30                  None\n5    6  RSI Strategy    BUY  ...     3907.18 2025-10-16 21:15:00+05:30                  None\n6    7  RSI Strategy    BUY  ...     3828.56 2025-10-17 12:00:00+05:30                  None\n7    8  RSI Strategy   SELL  ...     3872.42 2025-10-18 02:30:00+05:30                  None\n8    9  RSI Strategy   SELL  ...     3831.57 2025-10-18 05:15:00+05:30                  None\n9   10  RSI Strategy   SELL  ...     3880.53 2025-10-19 12:00:00+05:30                  None\n10  11  RSI Strategy    BUY  ...     3912.81 2025-10-19 15:15:00+05:30                  None\n11  12  RSI Strategy   SELL  ...     3972.23 2025-10-19 19:15:00+05:30                  None\n12  13  RSI Strategy   SELL  ...     4011.64 2025-10-19 22:30:00+05:30                  None\n13  14  RSI Strategy    BUY  ...     3979.30 2025-10-20 09:00:00+05:30                  None\n14  15  RSI Strategy   SELL  ...     4081.71 2025-10-20 12:00:00+05:30                  None\n15  16  RSI Strategy    BUY  ...     4003.98 2025-10-20 21:15:00+05:30                  None\n16  17  RSI Strategy    BUY  ...     3936.78 2025-10-20 22:00:00+05:30                  None\n17  18  RSI Strategy    BUY  ...     3947.81 2025-10-21 07:15:00+05:30                  None\n18  19  RSI Strategy    BUY  ...     3878.95 2025-10-21 09:30:00+05:30                  None\n19  20  RSI Strategy    BUY  ...     3857.99 2025-10-21 14:00:00+05:30                  None\n20  21  RSI Strategy   SELL  ...     4074.76 2025-10-21 21:00:00+05:30                  None\n21  22  RSI Strategy   SELL  ...     3930.44 2025-10-22 02:45:00+05:30                  None\n22  23  RSI Strategy    BUY  ...     3843.78 2025-10-22 08:30:00+05:30                  None\n23  24  RSI Strategy    BUY  ...     3743.35 2025-10-23 02:30:00+05:30                  None\n24  25  RSI Strategy   SELL  ...     3844.57 2025-10-23 10:00:00+05:30                  None\n25  26  RSI Strategy   SELL  ...     3854.03 2025-10-23 11:30:00+05:30                  None\n26  27  RSI Strategy   SELL  ...     3891.41 2025-10-23 12:15:00+05:30                  None\n27  28  RSI Strategy   SELL  ...     3863.06 2025-10-23 17:15:00+05:30                  None\n28  29  RSI Strategy    BUY  ...     3815.10 2025-10-23 19:30:00+05:30                  None\n\n[29 rows x 18 columns]",
+    "performance_metrics": {
+      "total_trades": 29,
+      "win_rate": 0.27586206896551724,
+      "avg_return": -0.008301604396016144,
+      "total_pnl": -0.22882724926145784,
+      "geometric_mean_return": -0.008920076898309093,
+      "sharpe_ratio": -0.2309994735523815,
+      "max_drawdown": 0.2921385804258346,
+      "profit_factor": 0.6064737376306537,
+      "avg_win": 0.04637760560947998,
+      "avg_loss": -0.02913177963620514,
+      "largest_win": 0.062112271996598176,
+      "largest_loss": -0.07120017982418766,
+      "consecutive_wins": 3,
+      "consecutive_losses": 7,
+      "risk_reward_ratio": 1.591993561280466,
+      "calmar_ratio": -3.423008689711612,
+      "sortino_ratio": -0.7081683114006166
+    },
+    "simulation_duration": 72.516443,
+    "test_data_points": 865,
+    "session_id": "ETHUSDT_rsi_validation_20251023_232341"
+  },
+  "donchian": {
+    "strategy_name": "Donchian Channel",
+    "parameters": {
+      "channel_period": 20,
+      "risk_reward_ratio": 4.0,
+      "trading_fee": 0.0
+    },
+    "final_status": {
+      "current_balance": 12301.849201059667,
+      "total_pnl": 2301.8492010596674,
+      "unrealized_pnl": 0,
+      "total_value": 12301.849201059667,
+      "active_trades": 0,
+      "total_trades": 21,
+      "active_trade_info": null,
+      "can_trade": true
+    },
+    "trade_history": "    id                   strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  Donchian Channel Breakout   SELL  ...     4101.86 2025-10-15 09:45:00+05:30                  None\n1    2  Donchian Channel Breakout    BUY  ...     4114.37 2025-10-15 16:30:00+05:30                  None\n2    3  Donchian Channel Breakout   SELL  ...     3980.97 2025-10-15 21:15:00+05:30                  None\n3    4  Donchian Channel Breakout   SELL  ...     3993.00 2025-10-15 23:15:00+05:30                  None\n4    5  Donchian Channel Breakout    BUY  ...     3979.18 2025-10-16 20:45:00+05:30                  None\n5    6  Donchian Channel Breakout   SELL  ...     3779.01 2025-10-17 12:30:00+05:30                  None\n6    7  Donchian Channel Breakout   SELL  ...     3797.78 2025-10-17 16:45:00+05:30                  None\n7    8  Donchian Channel Breakout    BUY  ...     3991.52 2025-10-19 19:45:00+05:30                  None\n8    9  Donchian Channel Breakout    BUY  ...     3989.53 2025-10-19 22:45:00+05:30                  None\n9   10  Donchian Channel Breakout    BUY  ...     4002.73 2025-10-20 04:30:00+05:30                  None\n10  11  Donchian Channel Breakout   SELL  ...     3979.30 2025-10-20 09:00:00+05:30                  None\n11  12  Donchian Channel Breakout    BUY  ...     4026.21 2025-10-20 16:15:00+05:30                  None\n12  13  Donchian Channel Breakout   SELL  ...     3922.66 2025-10-21 09:15:00+05:30                  None\n13  14  Donchian Channel Breakout   SELL  ...     3904.65 2025-10-21 17:45:00+05:30                  None\n14  15  Donchian Channel Breakout    BUY  ...     4055.16 2025-10-21 20:45:00+05:30                  None\n15  16  Donchian Channel Breakout    BUY  ...     4029.19 2025-10-21 22:15:00+05:30                  None\n16  17  Donchian Channel Breakout   SELL  ...     3835.46 2025-10-22 15:00:00+05:30                  None\n17  18  Donchian Channel Breakout   SELL  ...     3845.12 2025-10-22 17:45:00+05:30                  None\n18  19  Donchian Channel Breakout    BUY  ...     3841.42 2025-10-22 19:30:00+05:30                  None\n19  20  Donchian Channel Breakout   SELL  ...     3795.61 2025-10-23 04:45:00+05:30                  None\n20  21  Donchian Channel Breakout    BUY  ...     3918.26 2025-10-23 22:15:00+05:30                  None\n\n[21 rows x 18 columns]",
+    "performance_metrics": {
+      "total_trades": 21,
+      "win_rate": 0.3333333333333333,
+      "avg_return": 0.011317552273206157,
+      "total_pnl": 0.23018492010596675,
+      "geometric_mean_return": 0.009913795452098695,
+      "sharpe_ratio": 0.20480176682826653,
+      "max_drawdown": 0.09995209584152433,
+      "profit_factor": 1.636751685035477,
+      "avg_win": 0.0872743167657979,
+      "avg_loss": -0.02666082997308972,
+      "largest_win": 0.09636616915138267,
+      "largest_loss": -0.034508457065563165,
+      "consecutive_wins": 1,
+      "consecutive_losses": 4,
+      "risk_reward_ratio": 3.273503370070954,
+      "calmar_ratio": 127371.84493367978,
+      "sortino_ratio": 2.6085144900607564
+    },
+    "simulation_duration": 93.659974,
+    "test_data_points": 865,
+    "session_id": "ETHUSDT_donchian_validation_20251023_232453"
+  }
+}

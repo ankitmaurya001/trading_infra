@@ -1,0 +1,56 @@
+{
+  "symbol": "SILVERMIC26FEBFUT",
+  "exchange": "MCX",
+  "start_date": "2025-11-24",
+  "end_date": "2025-12-24",
+  "interval": "15minute",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 4,
+        "long_window": 58,
+        "risk_reward_ratio": 6.0
+      },
+      "final_status": {
+        "current_balance": 0.0,
+        "total_pnl": -10000.0,
+        "unrealized_pnl": 0.0,
+        "total_value": 0.0,
+        "active_trades": 1,
+        "total_trades": 20,
+        "active_trade_info": {
+          "strategy": "Moving Average Crossover",
+          "action": "SELL",
+          "entry_price": 213881.0,
+          "quantity": 0.23294656337289243,
+          "entry_time": "2025-12-22 22:15:00+05:30"
+        },
+        "can_trade": false
+      },
+      "performance_metrics": {
+        "total_trades": 19,
+        "win_rate": 0.15789473684210525,
+        "avg_return": -0.007839068333849834,
+        "total_pnl": -1.0,
+        "geometric_mean_return": -0.009720231146871483,
+        "sharpe_ratio": -0.12163030558357046,
+        "max_drawdown": 0.28577601377823403,
+        "profit_factor": 0.7220731961867003,
+        "avg_win": 0.12898748871576413,
+        "avg_loss": -0.03349404778065245,
+        "largest_win": 0.13847730767640526,
+        "largest_loss": -0.1083792264281308,
+        "consecutive_wins": 1,
+        "consecutive_losses": 7,
+        "risk_reward_ratio": 3.8510570463290685,
+        "calmar_ratio": -3.3152130508715545,
+        "sortino_ratio": -0.3413236062252966
+      },
+      "simulation_duration_sec": 138.872171,
+      "session_id": "SILVERMIC26FEBFUT_MCX_ma_param_1_mock_20251224_014152",
+      "trade_history_csv": "ma_mock_results_kite/SILVERMIC26FEBFUT_MCX_ma_param_1_mock_20251224_014152_trades.csv"
+    }
+  ],
+  "failed_results": []
+}

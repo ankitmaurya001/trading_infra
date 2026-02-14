@@ -1,0 +1,17 @@
+{
+  "current_balance": 10000,
+  "total_pnl": 0,
+  "unrealized_pnl": 0,
+  "total_value": 10000,
+  "active_trades": 0,
+  "total_trades": 0,
+  "active_trade_info": null,
+  "can_trade": true,
+  "is_running": true,
+  "last_update": "2025-10-02T23:00:04.288126",
+  "session_id": "ETHUSDT_20251002_012631_testnet",
+  "symbol": "ETHUSDT",
+  "interval": "15m",
+  "mock_mode": false,
+  "execution_mode": "binance_testnet"
+}

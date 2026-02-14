@@ -1,0 +1,49 @@
+{
+  "symbol": "EURUSD",
+  "start_date": "2025-12-05",
+  "end_date": "2026-01-04",
+  "interval": "15m",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 39,
+        "long_window": 261,
+        "risk_reward_ratio": 8.0
+      },
+      "final_status": {
+        "current_balance": 9954.121815076933,
+        "total_pnl": -45.87818492306724,
+        "unrealized_pnl": 0,
+        "total_value": 9954.121815076933,
+        "active_trades": 0,
+        "total_trades": 1,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "performance_metrics": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_return": -0.00458781849230678,
+        "total_pnl": -0.004587818492306724,
+        "geometric_mean_return": -0.004587818492306828,
+        "sharpe_ratio": 0,
+        "max_drawdown": 0.004587818492306828,
+        "profit_factor": 0.0,
+        "avg_win": 0,
+        "avg_loss": -0.00458781849230678,
+        "largest_win": -0.00458781849230678,
+        "largest_loss": -0.00458781849230678,
+        "consecutive_wins": 0,
+        "consecutive_losses": 1,
+        "risk_reward_ratio": 0.0,
+        "calmar_ratio": -149.5557019035511,
+        "sortino_ratio": 0
+      },
+      "simulation_duration_sec": 46.491174,
+      "session_id": "EURUSD_ctrader_ma_param_1_mock_20260119_045609",
+      "trade_history_csv": "ma_mock_results_ctrader/EURUSD_ctrader_ma_param_1_mock_20260119_045609_trades.csv"
+    }
+  ],
+  "failed_results": []
+}

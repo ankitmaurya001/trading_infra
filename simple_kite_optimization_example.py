@@ -64,10 +64,11 @@ def main():
     print("="*60)
     
     # Configuration for Indian markets
-    symbol = "TATAMOTORS"  # NSE symbol
-    exchange = "NSE"
-    #symbol = "NATURALGAS25SEPFUT"
-    start_date = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
+    # symbol = "TATAMOTORS"  # NSE symbol
+    #exchange = "NSE"
+    exchange = "MCX"
+    symbol = "COPPER25OCTFUT"
+    start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
     end_date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     interval = "15minute"  # Kite uses different interval format
     trading_fee = 0 # 0.03% - typical Kite charges

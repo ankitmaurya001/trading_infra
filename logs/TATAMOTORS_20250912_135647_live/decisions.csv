@@ -1,0 +1,4 @@
+timestamp,symbol,strategy,signal,signal_name,current_price,current_balance,active_trades_count,position_type,take_profit,stop_loss,trade_status
+2025-09-12 13:56:47.917990,TATAMOTORS,Moving Average Crossover,0,HOLD,715.6,10000,0,NONE,,,NONE
+2025-09-12 14:00:04.097891,TATAMOTORS,Moving Average Crossover,0,HOLD,716.3,10000,0,NONE,,,NONE
+2025-09-12 14:15:04.249391,TATAMOTORS,Moving Average Crossover,0,HOLD,715.75,10000,0,NONE,,,NONE

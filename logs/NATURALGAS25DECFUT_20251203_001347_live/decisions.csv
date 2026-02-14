@@ -1,0 +1,2 @@
+timestamp,symbol,strategy,signal,signal_name,current_price,current_balance,active_trades_count,position_type,take_profit,stop_loss,trade_status
+2025-12-03 05:43:47.702781+05:30,NATURALGAS25DECFUT,Moving Average Crossover,0,HOLD,435.0,10000,0,NONE,,,NONE

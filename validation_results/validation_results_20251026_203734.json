@@ -1,0 +1,218 @@
+{
+  "ma": {
+    "strategy_name": "Moving Average Crossover",
+    "parameter_sets_tested": 5,
+    "validation_results": [
+      {
+        "parameter_set": 1,
+        "parameters": {
+          "short_window": 5,
+          "long_window": 60,
+          "risk_reward_ratio": 3.5,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 359.49420570805484,
+        "final_status": {
+          "current_balance": 10535.002588848552,
+          "total_pnl": 535.0025888485525,
+          "unrealized_pnl": 0,
+          "total_value": 10535.002588848552,
+          "active_trades": 0,
+          "total_trades": 20,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "    id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  Moving Average Crossover   SELL  ...     3870.98 2025-10-18 20:00:00+05:30                  None\n1    2  Moving Average Crossover    BUY  ...     3854.11 2025-10-18 22:00:00+05:30                  None\n2    3  Moving Average Crossover    BUY  ...     3878.87 2025-10-19 02:30:00+05:30                  None\n3    4  Moving Average Crossover   SELL  ...     3885.83 2025-10-19 08:45:00+05:30                  None\n4    5  Moving Average Crossover    BUY  ...     3895.29 2025-10-19 09:30:00+05:30                  None\n5    6  Moving Average Crossover   SELL  ...     3896.32 2025-10-19 15:00:00+05:30                  None\n6    7  Moving Average Crossover    BUY  ...     4011.64 2025-10-19 22:30:00+05:30                  None\n7    8  Moving Average Crossover   SELL  ...     3947.86 2025-10-20 06:45:00+05:30                  None\n8    9  Moving Average Crossover    BUY  ...     4003.98 2025-10-20 21:15:00+05:30                  None\n9   10  Moving Average Crossover    BUY  ...     4032.99 2025-10-21 20:30:00+05:30                  None\n10  11  Moving Average Crossover   SELL  ...     3838.92 2025-10-22 06:00:00+05:30                  None\n11  12  Moving Average Crossover    BUY  ...     3918.26 2025-10-23 22:15:00+05:30                  None\n12  13  Moving Average Crossover   SELL  ...     3881.72 2025-10-24 07:15:00+05:30                  None\n13  14  Moving Average Crossover   SELL  ...     3939.67 2025-10-25 01:45:00+05:30                  None\n14  15  Moving Average Crossover    BUY  ...     3919.90 2025-10-25 05:45:00+05:30                  None\n15  16  Moving Average Crossover    BUY  ...     3921.20 2025-10-25 09:15:00+05:30                  None\n16  17  Moving Average Crossover   SELL  ...     3938.98 2025-10-25 22:30:00+05:30                  None\n17  18  Moving Average Crossover    BUY  ...     3945.46 2025-10-26 02:15:00+05:30                  None\n18  19  Moving Average Crossover   SELL  ...     3939.93 2025-10-26 10:15:00+05:30                  None\n19  20  Moving Average Crossover    BUY  ...     4003.15 2025-10-26 14:45:00+05:30                  None\n\n[20 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 20,
+          "win_rate": 0.25,
+          "avg_return": 0.003781737564890407,
+          "total_pnl": 0.05350025888485525,
+          "geometric_mean_return": 0.0026093083347387136,
+          "sharpe_ratio": 0.07441307939697446,
+          "max_drawdown": 0.15038389536782698,
+          "profit_factor": 1.210546445957312,
+          "avg_win": 0.08697309418653446,
+          "avg_loss": -0.023948714642324273,
+          "largest_win": 0.13053039677900158,
+          "largest_loss": -0.03559208649007046,
+          "consecutive_wins": 3,
+          "consecutive_losses": 7,
+          "risk_reward_ratio": 3.6316393378719356,
+          "calmar_ratio": 94.05135973454603,
+          "sortino_ratio": 0.7160046557924041
+        },
+        "simulation_duration": 126.693988,
+        "session_id": "ETHUSDT_ma_param_1_validation_20251026_200200"
+      },
+      {
+        "parameter_set": 2,
+        "parameters": {
+          "short_window": 25,
+          "long_window": 30,
+          "risk_reward_ratio": 5.0,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 223.74581164729648,
+        "final_status": {
+          "current_balance": 8819.883018197444,
+          "total_pnl": -1180.1169818025555,
+          "unrealized_pnl": 0,
+          "total_value": 8819.883018197444,
+          "active_trades": 0,
+          "total_trades": 29,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "    id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  Moving Average Crossover   SELL  ...     3909.39 2025-10-18 12:30:00+05:30                  None\n1    2  Moving Average Crossover   SELL  ...     3877.89 2025-10-18 21:15:00+05:30                  None\n2    3  Moving Average Crossover    BUY  ...     3878.87 2025-10-19 02:30:00+05:30                  None\n3    4  Moving Average Crossover   SELL  ...     3885.83 2025-10-19 08:45:00+05:30                  None\n4    5  Moving Average Crossover    BUY  ...     3862.99 2025-10-19 14:00:00+05:30                  None\n5    6  Moving Average Crossover   SELL  ...     3972.23 2025-10-19 19:15:00+05:30                  None\n6    7  Moving Average Crossover   SELL  ...     3947.86 2025-10-20 06:45:00+05:30                  None\n7    8  Moving Average Crossover    BUY  ...     4055.03 2025-10-20 13:15:00+05:30                  None\n8    9  Moving Average Crossover   SELL  ...     3936.78 2025-10-20 22:00:00+05:30                  None\n9   10  Moving Average Crossover    BUY  ...     3964.61 2025-10-21 05:30:00+05:30                  None\n10  11  Moving Average Crossover   SELL  ...     3857.97 2025-10-21 10:00:00+05:30                  None\n11  12  Moving Average Crossover    BUY  ...     3866.03 2025-10-21 19:15:00+05:30                  None\n12  13  Moving Average Crossover    BUY  ...     3979.99 2025-10-22 01:30:00+05:30                  None\n13  14  Moving Average Crossover   SELL  ...     3795.44 2025-10-22 20:00:00+05:30                  None\n14  15  Moving Average Crossover    BUY  ...     3799.59 2025-10-23 00:00:00+05:30                  None\n15  16  Moving Average Crossover   SELL  ...     3827.92 2025-10-23 06:30:00+05:30                  None\n16  17  Moving Average Crossover    BUY  ...     3896.10 2025-10-23 13:45:00+05:30                  None\n17  18  Moving Average Crossover   SELL  ...     3865.49 2025-10-23 20:30:00+05:30                  None\n18  19  Moving Average Crossover    BUY  ...     3855.48 2025-10-24 00:30:00+05:30                  None\n19  20  Moving Average Crossover   SELL  ...     3862.37 2025-10-24 06:00:00+05:30                  None\n20  21  Moving Average Crossover    BUY  ...     3963.21 2025-10-24 10:00:00+05:30                  None\n21  22  Moving Average Crossover   SELL  ...     3977.26 2025-10-24 18:00:00+05:30                  None\n22  23  Moving Average Crossover    BUY  ...     3882.79 2025-10-24 21:30:00+05:30                  None\n23  24  Moving Average Crossover    BUY  ...     3919.90 2025-10-25 05:45:00+05:30                  None\n24  25  Moving Average Crossover   SELL  ...     3941.61 2025-10-25 12:45:00+05:30                  None\n25  26  Moving Average Crossover   SELL  ...     3953.91 2025-10-25 14:15:00+05:30                  None\n26  27  Moving Average Crossover   SELL  ...     3945.56 2025-10-25 23:45:00+05:30                  None\n27  28  Moving Average Crossover    BUY  ...     3944.59 2025-10-26 02:30:00+05:30                  None\n28  29  Moving Average Crossover   SELL  ...     3957.58 2025-10-26 14:00:00+05:30                  None\n\n[29 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 29,
+          "win_rate": 0.1724137931034483,
+          "avg_return": -0.0029298106114697955,
+          "total_pnl": -0.11801169818025556,
+          "geometric_mean_return": -0.00432086176515023,
+          "sharpe_ratio": -0.053086830965209976,
+          "max_drawdown": 0.2207080380351687,
+          "profit_factor": 0.8705783372039975,
+          "avg_win": 0.11430584071511211,
+          "avg_loss": -0.02735390463784103,
+          "largest_win": 0.13475797732719685,
+          "largest_loss": -0.05078566183772271,
+          "consecutive_wins": 1,
+          "consecutive_losses": 8,
+          "risk_reward_ratio": 4.178776018579188,
+          "calmar_ratio": -4.516152067416077,
+          "sortino_ratio": -0.3656062743730905
+        },
+        "simulation_duration": 139.832539,
+        "session_id": "ETHUSDT_ma_param_2_validation_20251026_200407"
+      },
+      {
+        "parameter_set": 3,
+        "parameters": {
+          "short_window": 30,
+          "long_window": 40,
+          "risk_reward_ratio": 4.5,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 199.4458672155154,
+        "final_status": {
+          "current_balance": 9892.7585375911,
+          "total_pnl": -107.24146240889968,
+          "unrealized_pnl": 0,
+          "total_value": 9892.7585375911,
+          "active_trades": 0,
+          "total_trades": 21,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "    id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  Moving Average Crossover   SELL  ...     3867.35 2025-10-18 11:15:00+05:30                  None\n1    2  Moving Average Crossover    BUY  ...     3887.54 2025-10-18 13:45:00+05:30                  None\n2    3  Moving Average Crossover   SELL  ...     3893.43 2025-10-18 23:15:00+05:30                  None\n3    4  Moving Average Crossover    BUY  ...     3867.53 2025-10-19 06:00:00+05:30                  None\n4    5  Moving Average Crossover   SELL  ...     3885.83 2025-10-19 08:45:00+05:30                  None\n5    6  Moving Average Crossover    BUY  ...     3876.03 2025-10-19 13:45:00+05:30                  None\n6    7  Moving Average Crossover   SELL  ...     3946.50 2025-10-19 19:00:00+05:30                  None\n7    8  Moving Average Crossover   SELL  ...     3979.30 2025-10-20 09:00:00+05:30                  None\n8    9  Moving Average Crossover    BUY  ...     4047.74 2025-10-20 13:30:00+05:30                  None\n9   10  Moving Average Crossover   SELL  ...     3964.27 2025-10-20 21:45:00+05:30                  None\n10  11  Moving Average Crossover    BUY  ...     3937.77 2025-10-21 07:30:00+05:30                  None\n11  12  Moving Average Crossover   SELL  ...     3857.97 2025-10-21 10:00:00+05:30                  None\n12  13  Moving Average Crossover    BUY  ...     3866.03 2025-10-21 19:15:00+05:30                  None\n13  14  Moving Average Crossover   SELL  ...     3743.35 2025-10-23 02:30:00+05:30                  None\n14  15  Moving Average Crossover    BUY  ...     3815.10 2025-10-23 19:30:00+05:30                  None\n15  16  Moving Average Crossover   SELL  ...     3918.26 2025-10-23 22:15:00+05:30                  None\n16  17  Moving Average Crossover    BUY  ...     3829.20 2025-10-24 02:15:00+05:30                  None\n17  18  Moving Average Crossover   SELL  ...     3862.37 2025-10-24 06:00:00+05:30                  None\n18  19  Moving Average Crossover    BUY  ...     3963.21 2025-10-24 10:00:00+05:30                  None\n19  20  Moving Average Crossover   SELL  ...     4003.15 2025-10-26 14:45:00+05:30                  None\n20  21  Moving Average Crossover    BUY  ...     4054.02 2025-10-26 17:45:00+05:30                  None\n\n[21 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 21,
+          "win_rate": 0.23809523809523808,
+          "avg_return": 0.0011194647943279599,
+          "total_pnl": -0.010724146240889968,
+          "geometric_mean_return": -0.0005132998522895393,
+          "sharpe_ratio": 0.018691763640148285,
+          "max_drawdown": 0.23582662263512966,
+          "profit_factor": 1.0472208315235998,
+          "avg_win": 0.1042712002901683,
+          "avg_loss": -0.03111545254812215,
+          "largest_win": 0.11877847338862262,
+          "largest_loss": -0.04756914400614154,
+          "consecutive_wins": 1,
+          "consecutive_losses": 9,
+          "risk_reward_ratio": 3.35110666087552,
+          "calmar_ratio": -1.647633592271585,
+          "sortino_ratio": 0.1174539254860765
+        },
+        "simulation_duration": 1444.926041,
+        "session_id": "ETHUSDT_ma_param_3_validation_20251026_200626"
+      },
+      {
+        "parameter_set": 4,
+        "parameters": {
+          "short_window": 30,
+          "long_window": 40,
+          "risk_reward_ratio": 5.0,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 185.98132572885524,
+        "final_status": {
+          "current_balance": 10636.860559790759,
+          "total_pnl": 636.860559790759,
+          "unrealized_pnl": 0,
+          "total_value": 10636.860559790759,
+          "active_trades": 0,
+          "total_trades": 21,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "    id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  Moving Average Crossover   SELL  ...     3867.35 2025-10-18 11:15:00+05:30                  None\n1    2  Moving Average Crossover    BUY  ...     3887.54 2025-10-18 13:45:00+05:30                  None\n2    3  Moving Average Crossover   SELL  ...     3893.43 2025-10-18 23:15:00+05:30                  None\n3    4  Moving Average Crossover    BUY  ...     3867.53 2025-10-19 06:00:00+05:30                  None\n4    5  Moving Average Crossover   SELL  ...     3885.83 2025-10-19 08:45:00+05:30                  None\n5    6  Moving Average Crossover    BUY  ...     3876.03 2025-10-19 13:45:00+05:30                  None\n6    7  Moving Average Crossover   SELL  ...     3946.50 2025-10-19 19:00:00+05:30                  None\n7    8  Moving Average Crossover   SELL  ...     3979.30 2025-10-20 09:00:00+05:30                  None\n8    9  Moving Average Crossover    BUY  ...     4047.74 2025-10-20 13:30:00+05:30                  None\n9   10  Moving Average Crossover   SELL  ...     3936.78 2025-10-20 22:00:00+05:30                  None\n10  11  Moving Average Crossover    BUY  ...     3937.77 2025-10-21 07:30:00+05:30                  None\n11  12  Moving Average Crossover   SELL  ...     3857.97 2025-10-21 10:00:00+05:30                  None\n12  13  Moving Average Crossover    BUY  ...     3866.03 2025-10-21 19:15:00+05:30                  None\n13  14  Moving Average Crossover   SELL  ...     3724.10 2025-10-23 02:45:00+05:30                  None\n14  15  Moving Average Crossover    BUY  ...     3815.10 2025-10-23 19:30:00+05:30                  None\n15  16  Moving Average Crossover   SELL  ...     3918.26 2025-10-23 22:15:00+05:30                  None\n16  17  Moving Average Crossover    BUY  ...     3829.20 2025-10-24 02:15:00+05:30                  None\n17  18  Moving Average Crossover   SELL  ...     3862.37 2025-10-24 06:00:00+05:30                  None\n18  19  Moving Average Crossover    BUY  ...     3963.21 2025-10-24 10:00:00+05:30                  None\n19  20  Moving Average Crossover   SELL  ...     4003.15 2025-10-26 14:45:00+05:30                  None\n20  21  Moving Average Crossover    BUY  ...     4072.89 2025-10-26 18:15:00+05:30                  None\n\n[21 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 21,
+          "win_rate": 0.23809523809523808,
+          "avg_return": 0.004958778313400007,
+          "total_pnl": 0.0636860559790759,
+          "geometric_mean_return": 0.0029443397554425044,
+          "sharpe_ratio": 0.07421743723005475,
+          "max_drawdown": 0.23582662263512966,
+          "profit_factor": 1.20916927132176,
+          "avg_win": 0.12039631707027092,
+          "avg_loss": -0.03111545254812215,
+          "largest_win": 0.1359697932560675,
+          "largest_loss": -0.04756914400614154,
+          "consecutive_wins": 1,
+          "consecutive_losses": 9,
+          "risk_reward_ratio": 3.869341668229632,
+          "calmar_ratio": 66.68005880954696,
+          "sortino_ratio": 0.520273599915843
+        },
+        "simulation_duration": 292.3809,
+        "session_id": "ETHUSDT_ma_param_4_validation_20251026_203031"
+      },
+      {
+        "parameter_set": 5,
+        "parameters": {
+          "short_window": 10,
+          "long_window": 50,
+          "risk_reward_ratio": 3.5,
+          "trading_fee": 0.0
+        },
+        "optimization_score": 179.59952240411198,
+        "final_status": {
+          "current_balance": 12291.652087373435,
+          "total_pnl": 2291.6520873734353,
+          "unrealized_pnl": 0,
+          "total_value": 12291.652087373435,
+          "active_trades": 0,
+          "total_trades": 21,
+          "active_trade_info": null,
+          "can_trade": true
+        },
+        "trade_history": "    id                  strategy action  ...  exit_price                 exit_time  broker_exit_order_id\n0    1  Moving Average Crossover   SELL  ...     3886.60 2025-10-18 22:45:00+05:30                  None\n1    2  Moving Average Crossover    BUY  ...     3867.53 2025-10-19 06:00:00+05:30                  None\n2    3  Moving Average Crossover   SELL  ...     3871.30 2025-10-19 06:45:00+05:30                  None\n3    4  Moving Average Crossover    BUY  ...     3888.86 2025-10-19 11:45:00+05:30                  None\n4    5  Moving Average Crossover   SELL  ...     3912.81 2025-10-19 15:15:00+05:30                  None\n5    6  Moving Average Crossover    BUY  ...     4041.01 2025-10-20 10:00:00+05:30                  None\n6    7  Moving Average Crossover   SELL  ...     3964.27 2025-10-20 21:45:00+05:30                  None\n7    8  Moving Average Crossover    BUY  ...     4021.24 2025-10-21 20:15:00+05:30                  None\n8    9  Moving Average Crossover   SELL  ...     3838.92 2025-10-22 06:00:00+05:30                  None\n9   10  Moving Average Crossover    BUY  ...     3894.54 2025-10-23 13:30:00+05:30                  None\n10  11  Moving Average Crossover   SELL  ...     3865.49 2025-10-23 20:30:00+05:30                  None\n11  12  Moving Average Crossover    BUY  ...     3887.69 2025-10-23 22:30:00+05:30                  None\n12  13  Moving Average Crossover   SELL  ...     3873.31 2025-10-24 06:30:00+05:30                  None\n13  14  Moving Average Crossover    BUY  ...     3963.21 2025-10-24 10:00:00+05:30                  None\n14  15  Moving Average Crossover   SELL  ...     3934.78 2025-10-25 00:45:00+05:30                  None\n15  16  Moving Average Crossover    BUY  ...     3919.90 2025-10-25 05:45:00+05:30                  None\n16  17  Moving Average Crossover   SELL  ...     3941.61 2025-10-25 12:45:00+05:30                  None\n17  18  Moving Average Crossover   SELL  ...     3945.56 2025-10-25 23:45:00+05:30                  None\n18  19  Moving Average Crossover    BUY  ...     3945.46 2025-10-26 02:15:00+05:30                  None\n19  20  Moving Average Crossover   SELL  ...     3942.73 2025-10-26 10:45:00+05:30                  None\n20  21  Moving Average Crossover    BUY  ...     4003.15 2025-10-26 14:45:00+05:30                  None\n\n[21 rows x 18 columns]",
+        "performance_metrics": {
+          "total_trades": 21,
+          "win_rate": 0.3333333333333333,
+          "avg_return": 0.011321788129778097,
+          "total_pnl": 0.22916520873734353,
+          "geometric_mean_return": 0.009873916535157345,
+          "sharpe_ratio": 0.20106614546636328,
+          "max_drawdown": 0.1571688374131865,
+          "profit_factor": 1.647977491076734,
+          "avg_win": 0.08638287094946895,
+          "avg_loss": -0.02620875328006733,
+          "largest_win": 0.1266055350888651,
+          "largest_loss": -0.03687368157430246,
+          "consecutive_wins": 5,
+          "consecutive_losses": 6,
+          "risk_reward_ratio": 3.2959549821534675,
+          "calmar_ratio": 299336.219446081,
+          "sortino_ratio": 2.009428981969459
+        },
+        "simulation_duration": 129.922223,
+        "session_id": "ETHUSDT_ma_param_5_validation_20251026_203524"
+      }
+    ]
+  }
+}

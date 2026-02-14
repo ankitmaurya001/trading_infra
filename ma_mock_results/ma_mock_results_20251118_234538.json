@@ -1,0 +1,48 @@
+{
+  "symbol": "BNBUSDT",
+  "start_date": "2025-11-03 23:38:03",
+  "end_date": "2025-11-18 23:38:03",
+  "interval": "15m",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 22,
+        "long_window": 30,
+        "risk_reward_ratio": 3.5
+      },
+      "final_status": {
+        "current_balance": 11203.309389927732,
+        "total_pnl": 1203.309389927732,
+        "unrealized_pnl": 0,
+        "total_value": 11203.309389927732,
+        "active_trades": 0,
+        "total_trades": 30,
+        "active_trade_info": null,
+        "can_trade": true
+      },
+      "performance_metrics": {
+        "total_trades": 30,
+        "win_rate": 0.3,
+        "avg_return": 0.00512676239792264,
+        "total_pnl": 0.1203309389927732,
+        "geometric_mean_return": 0.0037946522946283867,
+        "sharpe_ratio": 0.09600556512056638,
+        "max_drawdown": 0.3446880961254391,
+        "profit_factor": 1.2536021371026391,
+        "avg_win": 0.08447510697766886,
+        "avg_loss": -0.028879670993397173,
+        "largest_win": 0.09821889451939636,
+        "largest_loss": -0.04686175891437392,
+        "consecutive_wins": 4,
+        "consecutive_losses": 14,
+        "risk_reward_ratio": 2.9250716532394914,
+        "calmar_ratio": 53.216934591694304,
+        "sortino_ratio": 0.7702066413624648
+      },
+      "simulation_duration_sec": 453.391331,
+      "session_id": "BNBUSDT_ma_param_1_mock_20251118_233804",
+      "trade_history_csv": "ma_mock_results/BNBUSDT_ma_param_1_mock_20251118_233804_trades.csv"
+    }
+  ]
+}

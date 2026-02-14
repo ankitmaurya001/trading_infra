@@ -1,0 +1,55 @@
+{
+  "symbol": "BTCUSD",
+  "start_date": "2025-11-18",
+  "end_date": "2026-01-17",
+  "interval": "15m",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 11,
+        "long_window": 42,
+        "risk_reward_ratio": 6.5
+      },
+      "final_status": {
+        "current_balance": 0.0,
+        "total_pnl": -10000.0,
+        "unrealized_pnl": 0.0,
+        "total_value": 0.0,
+        "active_trades": 1,
+        "total_trades": 38,
+        "active_trade_info": {
+          "strategy": "Moving Average Crossover",
+          "action": "SELL",
+          "entry_price": 95296.08,
+          "quantity": 0.9421502396672796,
+          "entry_time": "2026-01-17 04:30:00+00:00"
+        },
+        "can_trade": false
+      },
+      "performance_metrics": {
+        "total_trades": 37,
+        "win_rate": 0.16216216216216217,
+        "avg_return": -0.0011595931333475335,
+        "total_pnl": -1.0,
+        "geometric_mean_return": -0.002908519779253882,
+        "sharpe_ratio": -0.018700754275545253,
+        "max_drawdown": 0.26367412628803555,
+        "profit_factor": 0.9502147792789714,
+        "avg_win": 0.13648265201355692,
+        "avg_loss": -0.02780002767790968,
+        "largest_win": 0.15033275763986176,
+        "largest_loss": -0.050221216670178044,
+        "consecutive_wins": 1,
+        "consecutive_losses": 10,
+        "risk_reward_ratio": 4.909443026274685,
+        "calmar_ratio": -2.8618842963190705,
+        "sortino_ratio": -0.13303104969889315
+      },
+      "simulation_duration_sec": 1743.179068,
+      "session_id": "BTCUSD_ctrader_ma_param_1_mock_20260117_103142",
+      "trade_history_csv": "ma_mock_results_ctrader/BTCUSD_ctrader_ma_param_1_mock_20260117_103142_trades.csv"
+    }
+  ],
+  "failed_results": []
+}

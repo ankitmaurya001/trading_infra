@@ -1,0 +1,19 @@
+{
+  "current_balance": 11204.118453075316,
+  "total_pnl": 1204.1184530753162,
+  "unrealized_pnl": 0,
+  "total_value": 11204.118453075316,
+  "active_trades": 0,
+  "total_trades": 42,
+  "active_trade_info": null,
+  "can_trade": true,
+  "is_running": true,
+  "last_update": "2025-09-05T15:15:00+05:30",
+  "session_id": "TATAMOTORS_20250908_091421_mock",
+  "symbol": "TATAMOTORS",
+  "interval": "15minute",
+  "mock_mode": true,
+  "mock_progress": 99.9,
+  "mock_total_points": 1000,
+  "mock_current_point": 999
+}

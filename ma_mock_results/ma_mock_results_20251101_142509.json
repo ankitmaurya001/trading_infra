@@ -1,0 +1,54 @@
+{
+  "symbol": "SOLUSDT",
+  "start_date": "2025-10-17 14:18:52",
+  "end_date": "2025-11-01 14:18:52",
+  "interval": "15m",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 20,
+        "long_window": 50,
+        "risk_reward_ratio": 5.0
+      },
+      "final_status": {
+        "current_balance": 0.0,
+        "total_pnl": -10000.0,
+        "unrealized_pnl": 0.0,
+        "total_value": 0.0,
+        "active_trades": 1,
+        "total_trades": 31,
+        "active_trade_info": {
+          "strategy": "Moving Average Crossover",
+          "action": "SELL",
+          "entry_price": 188.42,
+          "quantity": 106.00768850257315,
+          "entry_time": "2025-11-01 01:15:00+05:30"
+        },
+        "can_trade": false
+      },
+      "performance_metrics": {
+        "total_trades": 30,
+        "win_rate": 0.1,
+        "avg_return": -0.015140967503054529,
+        "total_pnl": -1.0,
+        "geometric_mean_return": -0.016038570361679216,
+        "sharpe_ratio": -0.3434548069219344,
+        "max_drawdown": 0.4258409965210326,
+        "profit_factor": 0.4188496396623495,
+        "avg_win": 0.10912475007516349,
+        "avg_loss": -0.028948269456189862,
+        "largest_win": 0.12074037231365156,
+        "largest_loss": -0.08267872553687501,
+        "consecutive_wins": 1,
+        "consecutive_losses": 18,
+        "risk_reward_ratio": 3.769646756961145,
+        "calmar_ratio": -2.348293416755459,
+        "sortino_ratio": -1.1297792233229271
+      },
+      "simulation_duration_sec": 375.342265,
+      "session_id": "SOLUSDT_ma_param_1_mock_20251101_141853",
+      "trade_history_csv": "ma_mock_results/SOLUSDT_ma_param_1_mock_20251101_141853_trades.csv"
+    }
+  ]
+}

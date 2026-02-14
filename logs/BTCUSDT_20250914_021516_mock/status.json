@@ -1,0 +1,19 @@
+{
+  "current_balance": 9970.194573060995,
+  "total_pnl": -29.805426939004974,
+  "unrealized_pnl": 0,
+  "total_value": 9970.194573060995,
+  "active_trades": 0,
+  "total_trades": 5,
+  "active_trade_info": null,
+  "can_trade": true,
+  "is_running": true,
+  "last_update": "2025-09-06T06:00:00+05:30",
+  "session_id": "BTCUSDT_20250914_021516_mock",
+  "symbol": "BTCUSDT",
+  "interval": "15m",
+  "mock_mode": true,
+  "mock_progress": 86.90972222222221,
+  "mock_total_points": 5760,
+  "mock_current_point": 5006
+}

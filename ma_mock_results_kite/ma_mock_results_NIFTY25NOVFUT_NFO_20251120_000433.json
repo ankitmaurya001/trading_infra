@@ -1,0 +1,55 @@
+{
+  "symbol": "NIFTY25NOVFUT",
+  "exchange": "NFO",
+  "start_date": "2025-11-05",
+  "end_date": "2025-11-20",
+  "interval": "15minute",
+  "results": [
+    {
+      "parameter_set": 1,
+      "parameters": {
+        "short_window": 14,
+        "long_window": 71,
+        "risk_reward_ratio": 6.0
+      },
+      "final_status": {
+        "current_balance": 0.0,
+        "total_pnl": -10000.0,
+        "unrealized_pnl": 0.0,
+        "total_value": 0.0,
+        "active_trades": 1,
+        "total_trades": 7,
+        "active_trade_info": {
+          "strategy": "Moving Average Crossover",
+          "action": "BUY",
+          "entry_price": 26054.3,
+          "quantity": 3.7607282687242254,
+          "entry_time": "2025-11-19 13:00:00+05:30"
+        },
+        "can_trade": false
+      },
+      "performance_metrics": {
+        "total_trades": 6,
+        "win_rate": 0.16666666666666666,
+        "avg_return": -0.0026463114139170046,
+        "total_pnl": -1.0,
+        "geometric_mean_return": -0.0033900303434730716,
+        "sharpe_ratio": -0.06135230452703275,
+        "max_drawdown": 0.07899653143471107,
+        "profit_factor": 0.8423907942644625,
+        "avg_win": 0.08486414344024627,
+        "avg_loss": -0.02014840238474966,
+        "largest_win": 0.08486414344024627,
+        "largest_loss": -0.02817886876342721,
+        "consecutive_wins": 1,
+        "consecutive_losses": 4,
+        "risk_reward_ratio": 4.211953971322313,
+        "calmar_ratio": -8.283574478782755,
+        "sortino_ratio": -0.4987713981069478
+      },
+      "simulation_duration_sec": 7.701569,
+      "session_id": "NIFTY25NOVFUT_NFO_ma_param_1_mock_20251120_000425",
+      "trade_history_csv": "ma_mock_results_kite/NIFTY25NOVFUT_NFO_ma_param_1_mock_20251120_000425_trades.csv"
+    }
+  ]
+}
