@@ -41,6 +41,8 @@ DEFAULT_PARAM_SETS = [
     {"short_window": 4, "long_window": 184, "risk_reward_ratio": 7.0},
     {"short_window": 12, "long_window": 50, "risk_reward_ratio": 7.0},
 ]
+DEFAULT_NUM_LOTS = 1
+DEFAULT_LOT_SIZE = 250
 # ============================================================================
 
 
@@ -152,6 +154,17 @@ def calculate_atr(data: pd.DataFrame, period: int = 14) -> pd.Series:
 
 def _fmt_level(value: Optional[float]) -> str:
     return f"{value:.2f}" if value is not None else "NA"
+
+
+def _calculate_pnl_rupees(
+    side: str,
+    entry_price: float,
+    exit_price: float,
+    num_lots: int = DEFAULT_NUM_LOTS,
+    lot_size: int = DEFAULT_LOT_SIZE,
+) -> float:
+    price_diff = (exit_price - entry_price) if side == "BUY" else (entry_price - exit_price)
+    return price_diff * num_lots * lot_size
 
 
 def run_majority_vote_validation(
@@ -370,7 +383,11 @@ def run_majority_vote_validation(
                 current_position = PositionType.NONE
                 if current_trade_entry_price is not None and current_trade_entry_balance is not None:
                     pnl = (price - current_trade_entry_price) / current_trade_entry_price
-                    pnl_rupees = current_trade_entry_balance * pnl
+                    pnl_rupees = _calculate_pnl_rupees(
+                        side="BUY",
+                        entry_price=current_trade_entry_price,
+                        exit_price=price,
+                    )
                     new_balance = current_trade_entry_balance + pnl_rupees
                     if verbose:
                         print("🔍 PnL Calculation Debug:")
@@ -401,7 +418,11 @@ def run_majority_vote_validation(
                 current_position = PositionType.NONE
                 if current_trade_entry_price is not None and current_trade_entry_balance is not None:
                     pnl = (price - current_trade_entry_price) / current_trade_entry_price
-                    pnl_rupees = current_trade_entry_balance * pnl
+                    pnl_rupees = _calculate_pnl_rupees(
+                        side="BUY",
+                        entry_price=current_trade_entry_price,
+                        exit_price=price,
+                    )
                     new_balance = current_trade_entry_balance + pnl_rupees
                     if verbose:
                         print("🔍 PnL Calculation Debug:")
@@ -433,7 +454,11 @@ def run_majority_vote_validation(
                 current_position = PositionType.NONE
                 if current_trade_entry_price is not None and current_trade_entry_balance is not None:
                     pnl = (current_trade_entry_price - price) / current_trade_entry_price
-                    pnl_rupees = current_trade_entry_balance * pnl
+                    pnl_rupees = _calculate_pnl_rupees(
+                        side="SELL",
+                        entry_price=current_trade_entry_price,
+                        exit_price=price,
+                    )
                     new_balance = current_trade_entry_balance + pnl_rupees
                     if verbose:
                         print("🔍 PnL Calculation Debug:")
@@ -464,7 +489,11 @@ def run_majority_vote_validation(
                 current_position = PositionType.NONE
                 if current_trade_entry_price is not None and current_trade_entry_balance is not None:
                     pnl = (current_trade_entry_price - price) / current_trade_entry_price
-                    pnl_rupees = current_trade_entry_balance * pnl
+                    pnl_rupees = _calculate_pnl_rupees(
+                        side="SELL",
+                        entry_price=current_trade_entry_price,
+                        exit_price=price,
+                    )
                     new_balance = current_trade_entry_balance + pnl_rupees
                     if verbose:
                         print("🔍 PnL Calculation Debug:")
@@ -546,7 +575,11 @@ def extract_trade_history(df: pd.DataFrame, initial_balance: float) -> pd.DataFr
                 else (open_trade["entry_price"] - price) / open_trade["entry_price"]
             )
             open_trade["pnl"] = pnl
-            open_trade["pnl_rupees"] = running_balance * pnl
+            open_trade["pnl_rupees"] = _calculate_pnl_rupees(
+                side=open_trade["action"],
+                entry_price=open_trade["entry_price"],
+                exit_price=price,
+            )
             running_balance += open_trade["pnl_rupees"]
             open_trade["balance_after"] = running_balance
             trades.append(open_trade)
@@ -566,7 +599,11 @@ def extract_trade_history(df: pd.DataFrame, initial_balance: float) -> pd.DataFr
             else (open_trade["entry_price"] - final_price) / open_trade["entry_price"]
         )
         open_trade["pnl"] = pnl
-        open_trade["pnl_rupees"] = running_balance * pnl
+        open_trade["pnl_rupees"] = _calculate_pnl_rupees(
+            side=open_trade["action"],
+            entry_price=open_trade["entry_price"],
+            exit_price=final_price,
+        )
         running_balance += open_trade["pnl_rupees"]
         open_trade["balance_after"] = running_balance
         trades.append(open_trade)
