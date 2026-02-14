@@ -38,8 +38,9 @@ DEFAULT_START_DATE = (datetime.now() - timedelta(days=DAYS_TO_VALIDATE)).strftim
 DEFAULT_END_DATE = datetime.now().strftime("%Y-%m-%d")
 
 DEFAULT_PARAM_SETS = [
-    {"short_window": 4, "long_window": 184, "risk_reward_ratio": 7.0},
-    {"short_window": 12, "long_window": 50, "risk_reward_ratio": 7.0},
+    {"short_window": 10, "long_window": 170, "risk_reward_ratio": 7.5},
+    {"short_window": 5, "long_window": 170, "risk_reward_ratio": 6.5},
+    {"short_window": 10, "long_window": 150, "risk_reward_ratio": 6.0},
 ]
 DEFAULT_NUM_LOTS = 1
 DEFAULT_LOT_SIZE = 250
@@ -163,7 +164,9 @@ def _calculate_pnl_rupees(
     num_lots: int = DEFAULT_NUM_LOTS,
     lot_size: int = DEFAULT_LOT_SIZE,
 ) -> float:
-    price_diff = (exit_price - entry_price) if side == "BUY" else (entry_price - exit_price)
+    price_diff = (
+        (exit_price - entry_price) if side == "BUY" else (entry_price - exit_price)
+    )
     return price_diff * num_lots * lot_size
 
 
@@ -298,7 +301,11 @@ def run_majority_vote_validation(
         df.loc[df.index[i], "majority_signal"] = majority_signal
 
         if verbose and majority_signal != last_majority_signal:
-            label = "LONG" if majority_signal == 1 else "SHORT" if majority_signal == -1 else "NONE"
+            label = (
+                "LONG"
+                if majority_signal == 1
+                else "SHORT" if majority_signal == -1 else "NONE"
+            )
             print(
                 f"🧮 [{df.index[i]}] Majority -> {label} (long_votes={long_votes}, short_votes={short_votes}, required={min_required_votes})"
             )
@@ -341,9 +348,7 @@ def run_majority_vote_validation(
                         f"🔄 [{df.index[i]}] Majority Vote - BUY 1.0000 {symbol} @ ₹{price:.2f}"
                     )
                     print(f"💰 Balance Before Entry: ₹{sim_balance:.2f}")
-                    print(
-                        f"📊 ATR: ₹{atr:.2f}"
-                    )
+                    print(f"📊 ATR: ₹{atr:.2f}")
                     print(f"🛑 Stop Loss: ₹{_fmt_level(current_trade_sl)}")
                     print(f"🎯 Take Profit: ₹{_fmt_level(current_trade_tp)}")
                 current_trade_entry_price = price
@@ -364,9 +369,7 @@ def run_majority_vote_validation(
                         f"🔄 [{df.index[i]}] Majority Vote - SELL 1.0000 {symbol} @ ₹{price:.2f}"
                     )
                     print(f"💰 Balance Before Entry: ₹{sim_balance:.2f}")
-                    print(
-                        f"📊 ATR: ₹{atr:.2f}"
-                    )
+                    print(f"📊 ATR: ₹{atr:.2f}")
                     print(f"🛑 Stop Loss: ₹{_fmt_level(current_trade_sl)}")
                     print(f"🎯 Take Profit: ₹{_fmt_level(current_trade_tp)}")
                 current_trade_entry_price = price
@@ -381,8 +384,13 @@ def run_majority_vote_validation(
                 if verbose:
                     print(f"🟢 [{df.index[i]}] Majority Vote - LONG EXIT (TP)")
                 current_position = PositionType.NONE
-                if current_trade_entry_price is not None and current_trade_entry_balance is not None:
-                    pnl = (price - current_trade_entry_price) / current_trade_entry_price
+                if (
+                    current_trade_entry_price is not None
+                    and current_trade_entry_balance is not None
+                ):
+                    pnl = (
+                        price - current_trade_entry_price
+                    ) / current_trade_entry_price
                     pnl_rupees = _calculate_pnl_rupees(
                         side="BUY",
                         entry_price=current_trade_entry_price,
@@ -416,8 +424,13 @@ def run_majority_vote_validation(
                 if verbose:
                     print(f"🟢 [{df.index[i]}] Majority Vote - LONG EXIT (SL)")
                 current_position = PositionType.NONE
-                if current_trade_entry_price is not None and current_trade_entry_balance is not None:
-                    pnl = (price - current_trade_entry_price) / current_trade_entry_price
+                if (
+                    current_trade_entry_price is not None
+                    and current_trade_entry_balance is not None
+                ):
+                    pnl = (
+                        price - current_trade_entry_price
+                    ) / current_trade_entry_price
                     pnl_rupees = _calculate_pnl_rupees(
                         side="BUY",
                         entry_price=current_trade_entry_price,
@@ -452,8 +465,13 @@ def run_majority_vote_validation(
                 if verbose:
                     print(f"🟢 [{df.index[i]}] Majority Vote - SHORT EXIT (TP)")
                 current_position = PositionType.NONE
-                if current_trade_entry_price is not None and current_trade_entry_balance is not None:
-                    pnl = (current_trade_entry_price - price) / current_trade_entry_price
+                if (
+                    current_trade_entry_price is not None
+                    and current_trade_entry_balance is not None
+                ):
+                    pnl = (
+                        current_trade_entry_price - price
+                    ) / current_trade_entry_price
                     pnl_rupees = _calculate_pnl_rupees(
                         side="SELL",
                         entry_price=current_trade_entry_price,
@@ -487,8 +505,13 @@ def run_majority_vote_validation(
                 if verbose:
                     print(f"🟢 [{df.index[i]}] Majority Vote - SHORT EXIT (SL)")
                 current_position = PositionType.NONE
-                if current_trade_entry_price is not None and current_trade_entry_balance is not None:
-                    pnl = (current_trade_entry_price - price) / current_trade_entry_price
+                if (
+                    current_trade_entry_price is not None
+                    and current_trade_entry_balance is not None
+                ):
+                    pnl = (
+                        current_trade_entry_price - price
+                    ) / current_trade_entry_price
                     pnl_rupees = _calculate_pnl_rupees(
                         side="SELL",
                         entry_price=current_trade_entry_price,
@@ -731,29 +754,64 @@ def create_ohlc_trade_chart(
     )
 
     if param_sets:
-        p = param_sets[0]
-        short_window = int(p["short_window"])
-        long_window = int(p["long_window"])
-        chart_df["short_ma"] = chart_df["close"].rolling(short_window).mean()
-        chart_df["long_ma"] = chart_df["close"].rolling(long_window).mean()
-        fig.add_trace(
-            go.Scatter(
-                x=chart_df.index,
-                y=chart_df["short_ma"],
-                mode="lines",
-                name=f"Short MA ({short_window})",
-                line=dict(width=1.8, color="#1f77b4"),
+        short_palette = [
+            "#1f77b4",
+            "#17becf",
+            "#2ca02c",
+            "#9467bd",
+            "#e377c2",
+            "#8c564b",
+            "#7f7f7f",
+            "#bcbd22",
+        ]
+        long_palette = [
+            "#ff7f0e",
+            "#d62728",
+            "#8c564b",
+            "#7f7f7f",
+            "#bcbd22",
+            "#e377c2",
+            "#9467bd",
+            "#17becf",
+        ]
+        for idx, p in enumerate(param_sets):
+            short_window = int(p["short_window"])
+            long_window = int(p["long_window"])
+            short_col = f"short_ma_{idx}"
+            long_col = f"long_ma_{idx}"
+            legend_group = f"ma_set_{idx}"
+            set_label = f"Set {idx + 1} MA (S{short_window}/L{long_window})"
+            chart_df[short_col] = chart_df["close"].rolling(short_window).mean()
+            chart_df[long_col] = chart_df["close"].rolling(long_window).mean()
+
+            fig.add_trace(
+                go.Scatter(
+                    x=chart_df.index,
+                    y=chart_df[short_col],
+                    mode="lines",
+                    name=set_label,
+                    legendgroup=legend_group,
+                    showlegend=True,
+                    line=dict(
+                        width=1.4, color=short_palette[idx % len(short_palette)]
+                    ),
+                )
             )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=chart_df.index,
-                y=chart_df["long_ma"],
-                mode="lines",
-                name=f"Long MA ({long_window})",
-                line=dict(width=1.8, color="#ff7f0e"),
+            fig.add_trace(
+                go.Scatter(
+                    x=chart_df.index,
+                    y=chart_df[long_col],
+                    mode="lines",
+                    name=f"{set_label} Long",
+                    legendgroup=legend_group,
+                    showlegend=False,
+                    line=dict(
+                        width=1.4,
+                        color=long_palette[idx % len(long_palette)],
+                        dash="dot",
+                    ),
+                )
             )
-        )
 
     if trades is not None and not trades.empty:
         entries = trades.copy()
@@ -770,12 +828,21 @@ def create_ohlc_trade_chart(
             if subset.empty:
                 continue
             hover = (
-                "<b>" + name + "</b><br>"
-                + "Entry: " + subset["entry_time"].astype(str)
-                + "<br>Price: " + subset["entry_price"].map(lambda x: f"{x:.2f}")
-                + "<br>ATR: " + subset["entry_atr"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "NA")
-                + "<br>TP: " + subset["take_profit"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "NA")
-                + "<br>SL: " + subset["stop_loss"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "NA")
+                "<b>"
+                + name
+                + "</b><br>"
+                + "Entry: "
+                + subset["entry_time"].astype(str)
+                + "<br>Price: "
+                + subset["entry_price"].map(lambda x: f"{x:.2f}")
+                + "<br>ATR: "
+                + subset["entry_atr"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "NA")
+                + "<br>TP: "
+                + subset["take_profit"].map(
+                    lambda x: f"{x:.2f}" if pd.notna(x) else "NA"
+                )
+                + "<br>SL: "
+                + subset["stop_loss"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "NA")
             )
             fig.add_trace(
                 go.Scatter(
@@ -793,13 +860,20 @@ def create_ohlc_trade_chart(
         if not exits.empty:
             hover = (
                 "<b>Trade Exit</b><br>"
-                + "Exit: " + exits["exit_time"].astype(str)
-                + "<br>Price: " + exits["exit_price"].map(lambda x: f"{x:.2f}")
-                + "<br>Status: " + exits["status"].astype(str)
-                + "<br>Entry ATR: " + exits["entry_atr"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "NA")
-                + "<br>Exit ATR: " + exits["exit_atr"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "NA")
-                + "<br>PnL: " + exits["pnl"].map(lambda x: f"{x * 100:.2f}%")
-                + "<br>PnL (Rs): " + exits["pnl_rupees"].map(lambda x: f"{x:+,.2f}")
+                + "Exit: "
+                + exits["exit_time"].astype(str)
+                + "<br>Price: "
+                + exits["exit_price"].map(lambda x: f"{x:.2f}")
+                + "<br>Status: "
+                + exits["status"].astype(str)
+                + "<br>Entry ATR: "
+                + exits["entry_atr"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "NA")
+                + "<br>Exit ATR: "
+                + exits["exit_atr"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "NA")
+                + "<br>PnL: "
+                + exits["pnl"].map(lambda x: f"{x * 100:.2f}%")
+                + "<br>PnL (Rs): "
+                + exits["pnl_rupees"].map(lambda x: f"{x:+,.2f}")
             )
             fig.add_trace(
                 go.Scatter(
@@ -819,6 +893,7 @@ def create_ohlc_trade_chart(
         yaxis_title="Price",
         template="plotly_white",
         hovermode="x unified",
+        legend=dict(groupclick="togglegroup"),
         xaxis_rangeslider_visible=True,
         height=850,
     )
