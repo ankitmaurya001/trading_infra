@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """
-Parallel MA optimization runner for Kite focused on robust top-3 parameter selection.
+Parallel MA optimization runner for Kite focused on configurable top-N selection.
 
 Compared to run_ma_optimization_kite_parallel.py, this script:
 1. Generates only the MA Optimal Regions Composite Score chart.
-2. Selects top-3 parameter sets from the MOST ROBUST parameters.
-3. For each robust (short, long), picks RR from BEST BY RR list when possible.
+2. Selects configurable top-N parameter sets from BEST PARAMETERS BY RR.
+3. Ranks those selections by composite score (descending).
 """
 
 import os
 import numpy as np
-from typing import Optional
 from datetime import datetime, timedelta
 
 from ma_3d_optimization_visualizer import MAOptimization3DVisualizer
@@ -28,6 +27,7 @@ EXCHANGE = "MCX"
 DAYS_TO_FETCH = 30
 INTERVAL = "15m"
 MAX_WORKERS = None  # None = use all available CPUs
+TOP_N = 3
 
 
 def _build_best_by_rr_rows(results: dict, metric: str = "composite_score") -> list:
@@ -51,77 +51,15 @@ def _build_best_by_rr_rows(results: dict, metric: str = "composite_score") -> li
     return sorted(rows, key=lambda r: r["risk_reward_ratio"])
 
 
-def _best_rr_for_pair(
-    results: dict, short_window: int, long_window: int, metric: str = "composite_score"
-) -> Optional[dict]:
-    """
-    Pick RR for a (short, long) pair.
-
-    Priority:
-      1) Use BEST BY RR rows only (as requested).
-      2) Fallback to full-grid best RR for the pair if not present in #1.
-    """
+def select_top_n_from_best_by_rr(results: dict, top_n: int, metric: str = "composite_score") -> list:
+    """Select configurable top-N rows from BEST PARAMETERS BY RR sorted by score."""
     best_by_rr_rows = _build_best_by_rr_rows(results, metric=metric)
-
-    candidate_rows = [
-        row
-        for row in best_by_rr_rows
-        if row["short_window"] == int(short_window)
-        and row["long_window"] == int(long_window)
-    ]
-    if candidate_rows:
-        return max(candidate_rows, key=lambda r: r["score"])
-
-    fallback_candidates = []
-    for rr, data in results.items():
-        for idx in range(len(data["short_windows"])):
-            if int(data["short_windows"][idx]) == int(short_window) and int(
-                data["long_windows"][idx]
-            ) == int(long_window):
-                fallback_candidates.append(
-                    {
-                        "risk_reward_ratio": rr,
-                        "short_window": int(short_window),
-                        "long_window": int(long_window),
-                        "score": float(data[metric][idx]),
-                        "total_pnl": float(data["total_pnl"][idx]),
-                        "sharpe_ratio": float(data["sharpe_ratio"][idx]),
-                        "total_trades": int(data["total_trades"][idx]),
-                    }
-                )
-
-    if not fallback_candidates:
-        return None
-
-    return max(fallback_candidates, key=lambda r: r["score"])
-
-
-def select_top_3_from_robust(
-    visualizer: MAOptimization3DVisualizer, metric: str = "composite_score"
-) -> list:
-    """Select top-3 robust parameter sets with RR chosen per requested rule."""
-    recommendations = visualizer.create_parameter_recommendations(metric=metric)
-    robustness = recommendations.get("robustness_analysis", {})
-    robust_parameters = robustness.get("robust_parameters", [])
-
-    selected = []
-    for _, robust_data in robust_parameters[:3]:
-        short_window = int(robust_data["short_window"])
-        long_window = int(robust_data["long_window"])
-        best_row = _best_rr_for_pair(
-            visualizer.results,
-            short_window=short_window,
-            long_window=long_window,
-            metric=metric,
-        )
-        if best_row:
-            selected.append(best_row)
-
-    return selected
+    sorted_rows = sorted(best_by_rr_rows, key=lambda row: row["score"], reverse=True)
+    return sorted_rows[: max(1, top_n)]
 
 
 def main() -> None:
-    print("🚀 PARALLEL MA OPTIMIZATION (KITE) - ROBUST TOP 3")
+    print("🚀 PARALLEL MA OPTIMIZATION (KITE) - CONFIGURABLE TOP N")
     print("=" * 58)
 
     print("\n📊 Data Source Options:")
@@ -195,6 +133,9 @@ def main() -> None:
     ).strip()
     max_workers = int(workers_input) if workers_input.isdigit() else MAX_WORKERS
 
+    top_n_input = input(f"   Number of top parameter sets to show (default {TOP_N}): ").strip()
+    top_n = int(top_n_input) if top_n_input.isdigit() else TOP_N
+
     visualizer = MAOptimization3DVisualizer(
         data,
         trading_fee=0.0,
@@ -245,15 +186,19 @@ def main() -> None:
         metric="composite_score", percentile_threshold=80.0
     )
 
-    top_3 = select_top_3_from_robust(visualizer, metric="composite_score")
+    top_params = select_top_n_from_best_by_rr(
+        visualizer.results,
+        top_n=top_n,
+        metric="composite_score",
+    )
 
-    print("\n🏁 TOP 3 PARAMETER SETS (From Most Robust + Best RR Mapping):")
+    print("\n🏁 TOP PARAMETER SETS (From BEST PARAMETERS BY RR sorted by Score):")
     print("-" * 108)
-    if not top_3:
+    if not top_params:
         print("No top parameters found.")
         return
 
-    for idx, row in enumerate(top_3[:3], start=1):
+    for idx, row in enumerate(top_params, start=1):
         print(
             f"{idx}. Short={row['short_window']:>2}, Long={row['long_window']:>3} | "
             f"RR={row['risk_reward_ratio']:>3.1f} | Score={row['score']:>8.2f} | "
