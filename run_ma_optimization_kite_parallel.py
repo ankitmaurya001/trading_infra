@@ -322,24 +322,39 @@ def run_parallel_optimization_grid(data, short_window_range, long_window_range,
     return results
 
 
-def fetch_real_data(symbol="TATAMOTORS", days=30, interval="15m", exchange="NSE"):
+def fetch_real_data(
+    symbol="TATAMOTORS",
+    days=30,
+    interval="15m",
+    exchange="NSE",
+    start_date=None,
+    end_date=None
+):
     """Fetch real data from Zerodha Kite"""
     print(f"📊 Fetching real data for {symbol} from {exchange}...")
     
     try:
         from data_fetcher import KiteDataFetcher
         import config as cfg
-        
+
         # Calculate date range (Kite uses YYYY-MM-DD format)
         # Kite API's to_date needs to be tomorrow to get today's data
-        end_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
-        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-        
-        # end_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-        # start_date = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d')
-        
+        if end_date is None:
+            end_dt = datetime.now() + timedelta(days=1)
+        else:
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+
+        if start_date is None:
+            start_dt = end_dt - timedelta(days=days)
+        else:
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+
+        start_date = start_dt.strftime('%Y-%m-%d')
+        end_date = end_dt.strftime('%Y-%m-%d')
+
         print(f"   From: {start_date}")
         print(f"   To: {end_date}")
+        print(f"   Days window: {days}")
         print(f"   Interval: {interval} (Kite: {map_interval_to_kite(interval)})")
         print(f"   Exchange: {exchange}")
         
@@ -448,8 +463,17 @@ def main():
         exchange = input(f"Enter exchange (NSE, BSE, MCX, default {EXCHANGE}): ").strip().upper() or EXCHANGE
         days = input(f"Enter number of days (default {DAYS_TO_FETCH}): ").strip()
         days = int(days) if days.isdigit() else DAYS_TO_FETCH
+        start_date = input("Enter start date YYYY-MM-DD (optional): ").strip() or None
+        end_date = input("Enter end date YYYY-MM-DD (optional): ").strip() or None
         interval = input(f"Enter interval (default {INTERVAL}): ").strip() or INTERVAL
-        data = fetch_real_data(symbol=symbol, days=days, interval=interval, exchange=exchange)
+        data = fetch_real_data(
+            symbol=symbol,
+            days=days,
+            interval=interval,
+            exchange=exchange,
+            start_date=start_date,
+            end_date=end_date
+        )
     else:
         print("❌ Invalid choice. Using demo data...")
         data = generate_sample_data()
