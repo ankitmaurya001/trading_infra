@@ -14,7 +14,7 @@ import json
 import os
 import time
 import webbrowser
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -177,7 +177,10 @@ def run_majority_vote_validation(
     initial_balance: float = 10000.0,
     verbose: bool = True,
     mock_delay: float = 0.0,
-) -> pd.DataFrame:
+    stop_on_result: bool = False,
+    max_consecutive_losses: int = 5,
+    return_stop_metadata: bool = False,
+) -> pd.DataFrame | Tuple[pd.DataFrame, Optional[pd.Timestamp], Optional[str]]:
     df = data.copy()
     df["ATR"] = calculate_atr(df)
 
@@ -215,7 +218,12 @@ def run_majority_vote_validation(
     last_majority_signal = 0
     min_required_votes = len(states) // 2 + 1
 
+    consecutive_losses = 0
+    stop_timestamp: Optional[pd.Timestamp] = None
+    stop_reason: Optional[str] = None
+
     for i in range(1, len(df)):
+        realized_trade_pnl: Optional[float] = None
         price = float(df["Close"].iloc[i])
         atr = float(df["ATR"].iloc[i])
         if np.isnan(atr) or atr <= 0:
@@ -391,6 +399,7 @@ def run_majority_vote_validation(
                     pnl = (
                         price - current_trade_entry_price
                     ) / current_trade_entry_price
+                    realized_trade_pnl = pnl
                     pnl_rupees = _calculate_pnl_rupees(
                         side="BUY",
                         entry_price=current_trade_entry_price,
@@ -431,6 +440,7 @@ def run_majority_vote_validation(
                     pnl = (
                         price - current_trade_entry_price
                     ) / current_trade_entry_price
+                    realized_trade_pnl = pnl
                     pnl_rupees = _calculate_pnl_rupees(
                         side="BUY",
                         entry_price=current_trade_entry_price,
@@ -472,6 +482,7 @@ def run_majority_vote_validation(
                     pnl = (
                         current_trade_entry_price - price
                     ) / current_trade_entry_price
+                    realized_trade_pnl = pnl
                     pnl_rupees = _calculate_pnl_rupees(
                         side="SELL",
                         entry_price=current_trade_entry_price,
@@ -512,6 +523,7 @@ def run_majority_vote_validation(
                     pnl = (
                         current_trade_entry_price - price
                     ) / current_trade_entry_price
+                    realized_trade_pnl = pnl
                     pnl_rupees = _calculate_pnl_rupees(
                         side="SELL",
                         entry_price=current_trade_entry_price,
@@ -547,9 +559,26 @@ def run_majority_vote_validation(
         if current_trade_sl is not None:
             df.loc[df.index[i], "trade_stop_loss"] = current_trade_sl
 
+        if stop_on_result and realized_trade_pnl is not None:
+            if realized_trade_pnl > 0:
+                stop_timestamp = pd.Timestamp(df.index[i])
+                stop_reason = "winning_trade_reached"
+                break
+
+            consecutive_losses += 1
+            if consecutive_losses >= max_consecutive_losses:
+                stop_timestamp = pd.Timestamp(df.index[i])
+                stop_reason = f"{max_consecutive_losses}_consecutive_losses"
+                break
+
         if mock_delay > 0:
             time.sleep(mock_delay)
 
+    if stop_timestamp is not None:
+        df = df[df.index <= stop_timestamp].copy()
+
+    if return_stop_metadata:
+        return df, stop_timestamp, stop_reason
     return df
 
 
