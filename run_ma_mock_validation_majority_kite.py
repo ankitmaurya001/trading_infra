@@ -14,7 +14,7 @@ import json
 import os
 import time
 import webbrowser
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -180,7 +180,7 @@ def run_majority_vote_validation(
     stop_on_result: bool = False,
     max_consecutive_losses: int = 5,
     return_stop_metadata: bool = False,
-) -> pd.DataFrame | Tuple[pd.DataFrame, Optional[pd.Timestamp], Optional[str]]:
+) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Optional[pd.Timestamp], Optional[str]]]:
     df = data.copy()
     df["ATR"] = calculate_atr(df)
 
@@ -695,7 +695,11 @@ def calculate_performance_metrics(trades: pd.DataFrame, initial_balance: float) 
 
 
 def create_cumulative_pnl_chart(
-    trades: pd.DataFrame, initial_balance: float, output_path: str
+    trades: pd.DataFrame,
+    initial_balance: float,
+    output_path: str,
+    title_suffix: Optional[str] = None,
+    auto_open: bool = False,
 ) -> Optional[str]:
     if trades.empty:
         print("⚠️  No closed trades to plot")
@@ -723,8 +727,12 @@ def create_cumulative_pnl_chart(
         )
     )
     fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1)
+    chart_title = "Majority-vote validation cumulative PnL (%)"
+    if title_suffix:
+        chart_title = f"{chart_title}<br><sup>{title_suffix}</sup>"
+
     fig.update_layout(
-        title="Majority-vote validation cumulative PnL (%)",
+        title=chart_title,
         xaxis_title="Time",
         yaxis_title="PnL (%)",
         template="plotly_white",
@@ -733,6 +741,14 @@ def create_cumulative_pnl_chart(
     )
     fig.write_html(output_path)
     print(f"📊 Cumulative PnL chart saved: {output_path}")
+    if auto_open:
+        abs_chart = os.path.abspath(output_path)
+        print(f"🌐 Opening chart: {abs_chart}")
+        try:
+            webbrowser.open(f"file://{abs_chart}")
+        except Exception as e:
+            print(f"⚠️  Could not open browser automatically: {e}")
+            print(f"   Please open manually: {abs_chart}")
     return output_path
 
 
@@ -758,6 +774,8 @@ def create_ohlc_trade_chart(
     symbol: str,
     exchange: str,
     output_path: str,
+    title_suffix: Optional[str] = None,
+    auto_open: bool = False,
 ) -> Optional[str]:
     if ohlc is None or ohlc.empty:
         print("⚠️  No OHLC data to plot")
@@ -916,8 +934,12 @@ def create_ohlc_trade_chart(
                 )
             )
 
+    chart_title = f"{symbol} ({exchange}) Majority-vote mock validation"
+    if title_suffix:
+        chart_title = f"{chart_title}<br><sup>{title_suffix}</sup>"
+
     fig.update_layout(
-        title=f"{symbol} ({exchange}) Majority-vote mock validation",
+        title=chart_title,
         xaxis_title="Time",
         yaxis_title="Price",
         template="plotly_white",
@@ -928,6 +950,14 @@ def create_ohlc_trade_chart(
     )
     fig.write_html(output_path, config={"scrollZoom": True, "displayModeBar": True})
     print(f"📊 OHLC+Trade chart saved: {output_path}")
+    if auto_open:
+        abs_chart = os.path.abspath(output_path)
+        print(f"🌐 Opening chart: {abs_chart}")
+        try:
+            webbrowser.open(f"file://{abs_chart}")
+        except Exception as e:
+            print(f"⚠️  Could not open browser automatically: {e}")
+            print(f"   Please open manually: {abs_chart}")
     return output_path
 
 
