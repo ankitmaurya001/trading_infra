@@ -7,7 +7,7 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import pandas as pd
 
@@ -54,6 +54,8 @@ class IterationSummary:
     optimization_end: str
     validation_start: str
     validation_end: str
+    validation_requested_end: str
+    validation_stop_reason: str
     optimization_points: int
     validation_points: int
     selected_params: List[Dict]
@@ -70,6 +72,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--start-date", required=True, help="YYYY-MM-DD")
     parser.add_argument("--optimization-days", type=int, required=True)
     parser.add_argument("--validation-days", type=int, required=True)
+    parser.add_argument(
+        "--validation-stop-mode",
+        choices=["time", "result"],
+        default="time",
+        help="How to stop validation: fixed days (time) or trade outcome (result).",
+    )
+    parser.add_argument(
+        "--validation-stop-days",
+        type=int,
+        default=None,
+        help="When stop-mode=time, stop validation after this many days (defaults to --validation-days).",
+    )
     parser.add_argument("--interval", default="15m")
     parser.add_argument("--initial-balance", type=float, default=10000.0)
     parser.add_argument("--max-workers", type=int, default=None)
@@ -90,18 +104,20 @@ def run_iteration(
     optimization_start: date,
     optimization_end: date,
     validation_start: date,
-    validation_end: date,
+    requested_validation_end: date,
+    validation_stop_mode: str,
+    validation_stop_days: int,
     out_dir: Path,
     initial_balance: float,
     quiet: bool,
     max_workers: int,
-) -> IterationSummary:
+) -> Tuple[IterationSummary, date]:
     iter_dir = out_dir / f"iteration_{iteration:03d}"
     iter_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\n🔁 Iteration {iteration}")
     print(f"   Optimization: {optimization_start} -> {optimization_end}")
-    print(f"   Validation:   {validation_start} -> {validation_end}")
+    print(f"   Validation:   {validation_start} -> {requested_validation_end} (requested)")
 
     optimization_data = fetch_kite_data(
         symbol=symbol,
@@ -140,23 +156,52 @@ def run_iteration(
         symbol=symbol,
         exchange=exchange,
         start_date=to_iso(validation_start),
-        end_date=to_iso(validation_end),
+        end_date=to_iso(requested_validation_end),
         interval=interval,
     )
 
-    result = run_majority_vote_validation(
-        data=validation_data,
-        param_sets=top_3,
-        symbol=symbol,
-        initial_balance=initial_balance,
-        verbose=not quiet,
-        mock_delay=0.0,
-    )
+    stop_reason = "max_window_reached"
+    validation_end = requested_validation_end
+
+    if validation_stop_mode == "result":
+        filtered_result, stop_timestamp, stop_reason_from_engine = run_majority_vote_validation(
+            data=validation_data,
+            param_sets=top_3,
+            symbol=symbol,
+            initial_balance=initial_balance,
+            verbose=not quiet,
+            mock_delay=0.0,
+            stop_on_result=True,
+            max_consecutive_losses=5,
+            return_stop_metadata=True,
+        )
+        if stop_reason_from_engine is not None:
+            stop_reason = stop_reason_from_engine
+        if stop_timestamp is not None:
+            validation_end = stop_timestamp.date()
+    else:
+        result = run_majority_vote_validation(
+            data=validation_data,
+            param_sets=top_3,
+            symbol=symbol,
+            initial_balance=initial_balance,
+            verbose=not quiet,
+            mock_delay=0.0,
+        )
+        time_stop_date = min(validation_start + timedelta(days=validation_stop_days), requested_validation_end)
+        filtered_result = result[result.index.date <= time_stop_date]
+        validation_end = time_stop_date
+        stop_reason = f"time_stop_after_{validation_stop_days}_days"
+
+    if filtered_result.empty:
+        raise RuntimeError(
+            f"Validation produced no rows after applying stop rule for iteration {iteration}."
+        )
 
     result_csv_path = iter_dir / "validation_detail.csv"
-    result.to_csv(result_csv_path)
+    filtered_result.to_csv(result_csv_path)
 
-    trades = extract_trade_history(result, initial_balance=initial_balance)
+    trades = extract_trade_history(filtered_result, initial_balance=initial_balance)
     trades_path = iter_dir / "validation_trades.csv"
     trades.to_csv(trades_path, index=False)
 
@@ -171,7 +216,7 @@ def run_iteration(
         output_path=str(iter_dir / "validation_pnl.html"),
     )
     create_ohlc_trade_chart(
-        ohlc=validation_data,
+        ohlc=validation_data[validation_data.index <= pd.Timestamp(validation_end)],
         trades=trades,
         param_sets=top_3,
         symbol=symbol,
@@ -185,12 +230,14 @@ def run_iteration(
         optimization_end=to_iso(optimization_end),
         validation_start=to_iso(validation_start),
         validation_end=to_iso(validation_end),
+        validation_requested_end=to_iso(requested_validation_end),
+        validation_stop_reason=stop_reason,
         optimization_points=len(optimization_data),
-        validation_points=len(validation_data),
+        validation_points=len(filtered_result),
         selected_params=top_3,
         validation_metrics=metrics,
         validation_trades=int(metrics.get("total_trades", 0)),
-    )
+    ), validation_end
 
 
 def build_combined_summary(iterations: List[IterationSummary], initial_balance: float) -> Dict:
@@ -228,6 +275,10 @@ def main() -> None:
     if args.optimization_days <= 0 or args.validation_days <= 0:
         raise ValueError("optimization-days and validation-days must both be > 0")
 
+    validation_stop_days = args.validation_stop_days or args.validation_days
+    if validation_stop_days <= 0:
+        raise ValueError("validation-stop-days must be > 0")
+
     iterations: List[IterationSummary] = []
     cursor = start_date
     iteration = 1
@@ -241,9 +292,9 @@ def main() -> None:
         if validation_start >= today:
             break
 
-        validation_end = min(requested_validation_end, today)
+        requested_validation_end = min(requested_validation_end, today)
 
-        iteration_summary = run_iteration(
+        iteration_summary, actual_validation_end = run_iteration(
             iteration=iteration,
             symbol=args.symbol,
             exchange=args.exchange,
@@ -251,7 +302,9 @@ def main() -> None:
             optimization_start=optimization_start,
             optimization_end=optimization_end,
             validation_start=validation_start,
-            validation_end=validation_end,
+            requested_validation_end=requested_validation_end,
+            validation_stop_mode=args.validation_stop_mode,
+            validation_stop_days=validation_stop_days,
             out_dir=out_dir,
             initial_balance=args.initial_balance,
             quiet=args.quiet,
@@ -259,7 +312,7 @@ def main() -> None:
         )
         iterations.append(iteration_summary)
 
-        cursor = cursor + timedelta(days=args.optimization_days)
+        cursor = actual_validation_end
         iteration += 1
 
     if not iterations:
@@ -274,6 +327,8 @@ def main() -> None:
                 "optimization_end": item.optimization_end,
                 "validation_start": item.validation_start,
                 "validation_end": item.validation_end,
+                "validation_requested_end": item.validation_requested_end,
+                "validation_stop_reason": item.validation_stop_reason,
                 "validation_total_trades": item.validation_metrics.get("total_trades", 0),
                 "validation_win_rate": item.validation_metrics.get("win_rate", 0.0),
                 "validation_total_pnl": item.validation_metrics.get("total_pnl", 0.0),
@@ -295,6 +350,8 @@ def main() -> None:
             "start_date": args.start_date,
             "optimization_days": args.optimization_days,
             "validation_days": args.validation_days,
+            "validation_stop_mode": args.validation_stop_mode,
+            "validation_stop_days": validation_stop_days,
             "initial_balance": args.initial_balance,
         },
         "combined_metrics": build_combined_summary(iterations, args.initial_balance),
