@@ -74,6 +74,66 @@ class IterationSummary:
     validation_trades: int
 
 
+def _format_pct(value: float) -> str:
+    return f"{value * 100.0:.2f}%"
+
+
+def _build_optimization_chart_snippet(top_n_params: List[Dict]) -> str:
+    """Create a compact optimization summary suitable for chart subtitles."""
+    snippets = []
+    for idx, row in enumerate(top_n_params, start=1):
+        snippets.append(
+            "#{} SW{}-LW{} RR{} Score={:.3f} Trades={} WR={} PnL={} DD={}".format(
+                idx,
+                row.get("short_window", "-"),
+                row.get("long_window", "-"),
+                row.get("risk_reward_ratio", "-"),
+                float(row.get("score", 0.0)),
+                int(row.get("total_trades", 0)),
+                _format_pct(float(row.get("win_rate", 0.0))),
+                _format_pct(float(row.get("total_pnl", 0.0))),
+                _format_pct(float(row.get("max_drawdown", 0.0))),
+            )
+        )
+    return " | ".join(snippets)
+
+
+def print_optimization_summary(iteration: int, top_n_params: List[Dict]) -> None:
+    print(f"\n🧠 Optimization Summary (Iteration {iteration})")
+    print(
+        "Rank | Short | Long | RR  | Trades | Score   | Win Rate | PnL      | Max DD"
+    )
+    print(
+        "-----+-------+------+-----+--------+---------+----------+----------+--------"
+    )
+
+    pnl_values: List[float] = []
+    for idx, row in enumerate(top_n_params, start=1):
+        pnl = float(row.get("total_pnl", 0.0))
+        pnl_values.append(pnl)
+        print(
+            f"{idx:>4} | "
+            f"{int(row.get('short_window', 0)):>5} | "
+            f"{int(row.get('long_window', 0)):>4} | "
+            f"{float(row.get('risk_reward_ratio', 0.0)):>3.1f} | "
+            f"{int(row.get('total_trades', 0)):>6} | "
+            f"{float(row.get('score', 0.0)):>7.3f} | "
+            f"{_format_pct(float(row.get('win_rate', 0.0))):>8} | "
+            f"{_format_pct(pnl):>8} | "
+            f"{_format_pct(float(row.get('max_drawdown', 0.0))):>6}"
+        )
+
+    print(
+        "-----+-------+------+-----+--------+---------+----------+----------+--------"
+    )
+    print(
+        "Top-N PnL Range: {} to {}".format(
+            _format_pct(min(pnl_values)) if pnl_values else "0.00%",
+            _format_pct(max(pnl_values)) if pnl_values else "0.00%",
+        )
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Walk-forward automation: optimize on window N, validate on next M days."
@@ -178,6 +238,7 @@ def run_iteration(
         raise RuntimeError(
             f"No top-n parameter sets were selected for iteration {iteration}"
         )
+    print_optimization_summary(iteration=iteration, top_n_params=top_n)
 
     top_n_path = iter_dir / "top_n_params.json"
     with open(top_n_path, "w", encoding="utf-8") as f:
@@ -257,12 +318,18 @@ def run_iteration(
         f"PnL: {pnl_pct:.2f}% (₹{pnl_rupees:+.2f}) | "
         f"Win Rate: {win_rate_pct:.2f}%"
     )
+    optimization_chart_summary = _build_optimization_chart_snippet(top_n)
+    chart_summary_with_opt = (
+        f"{chart_summary} | Opt: {optimization_chart_summary}"
+        if optimization_chart_summary
+        else chart_summary
+    )
 
     create_cumulative_pnl_chart(
         trades=trades,
         initial_balance=initial_balance,
         output_path=str(iter_dir / "validation_pnl.html"),
-        title_suffix=chart_summary,
+        title_suffix=chart_summary_with_opt,
         auto_open=True,
     )
     validation_ohlc = validation_data[validation_data.index.date <= validation_end]
@@ -273,7 +340,7 @@ def run_iteration(
         symbol=symbol,
         exchange=exchange,
         output_path=str(iter_dir / "validation_ohlc_trades.html"),
-        title_suffix=chart_summary,
+        title_suffix=chart_summary_with_opt,
         auto_open=True,
     )
 
