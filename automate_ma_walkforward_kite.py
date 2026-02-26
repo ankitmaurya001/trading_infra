@@ -46,16 +46,16 @@ LONG_WINDOW_RANGE = [
     190,
     200,
 ]
-RISK_REWARD_RATIOS = [6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]
+RISK_REWARD_RATIOS = [3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]
 
 # Global defaults for CLI-required runtime fields
-DEFAULT_SYMBOL = "NATGASMINI26FEBFUT"
+DEFAULT_SYMBOL = "NATGASMINI26MARFUT"
 DEFAULT_EXCHANGE = "MCX"
 DEFAULT_START_DATE = (date.today() - timedelta(days=150)).strftime("%Y-%m-%d")
-DEFAULT_OPTIMIZATION_DAYS = 30
+DEFAULT_OPTIMIZATION_DAYS = 90
 DEFAULT_VALIDATION_DAYS = 30
-DEFAULT_MAX_CONSECUTIVE_LOSSES = 3
-TOP_N = 1
+DEFAULT_MAX_CONSECUTIVE_LOSSES = 5
+TOP_N = 5
 
 
 @dataclass
@@ -443,7 +443,13 @@ def main() -> None:
             iteration_summary, initial_balance=args.initial_balance
         )
 
-        cursor = actual_validation_end
+        next_optimization_start = actual_validation_end - timedelta(
+            days=DEFAULT_OPTIMIZATION_DAYS
+        )
+        if next_optimization_start <= cursor:
+            next_optimization_start = cursor + timedelta(days=1)
+
+        cursor = next_optimization_start
         iteration += 1
 
     if not iterations:
