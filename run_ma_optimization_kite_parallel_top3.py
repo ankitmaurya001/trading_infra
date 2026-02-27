@@ -46,15 +46,49 @@ def _build_best_by_rr_rows(results: dict, metric: str = "composite_score") -> li
                 "total_pnl": float(data["total_pnl"][best_idx]),
                 "sharpe_ratio": float(data["sharpe_ratio"][best_idx]),
                 "total_trades": int(data["total_trades"][best_idx]),
+                "win_rate": float(data["win_rate"][best_idx]),
+                "max_drawdown": float(data["max_drawdown"][best_idx]),
             }
         )
     return sorted(rows, key=lambda r: r["risk_reward_ratio"])
 
 
-def select_top_n_from_best_by_rr(results: dict, top_n: int, metric: str = "composite_score") -> list:
-    """Select configurable top-N rows from BEST PARAMETERS BY RR sorted by score."""
+def select_top_n_from_best_by_rr(
+    results: dict,
+    top_n: int,
+    metric: str = "composite_score",
+    min_total_trades: int = 0,
+) -> list:
+    """
+    Select top-N rows with unique (short_window, long_window) pairs.
+
+    If multiple rows have the same MA pair, keep the one with the largest RR.
+    Then rank the unique rows by score descending.
+    """
     best_by_rr_rows = _build_best_by_rr_rows(results, metric=metric)
-    sorted_rows = sorted(best_by_rr_rows, key=lambda row: row["score"], reverse=True)
+    filtered_rows = [
+        row for row in best_by_rr_rows if int(row.get("total_trades", 0)) >= min_total_trades
+    ]
+    unique_by_ma = {}
+    for row in filtered_rows:
+        key = (int(row["short_window"]), int(row["long_window"]))
+        current = unique_by_ma.get(key)
+        if current is None:
+            unique_by_ma[key] = row
+            continue
+
+        current_rr = float(current["risk_reward_ratio"])
+        candidate_rr = float(row["risk_reward_ratio"])
+        if candidate_rr > current_rr:
+            unique_by_ma[key] = row
+        elif candidate_rr == current_rr and float(row["score"]) > float(current["score"]):
+            unique_by_ma[key] = row
+
+    sorted_rows = sorted(
+        unique_by_ma.values(),
+        key=lambda row: row["score"],
+        reverse=True,
+    )
     return sorted_rows[: max(1, top_n)]
 
 

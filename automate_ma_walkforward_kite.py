@@ -46,16 +46,18 @@ LONG_WINDOW_RANGE = [
     190,
     200,
 ]
-RISK_REWARD_RATIOS = [3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]
+RISK_REWARD_RATIOS = [5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]
 
 # Global defaults for CLI-required runtime fields
 DEFAULT_SYMBOL = "NATGASMINI26MARFUT"
+# DEFAULT_SYMBOL = "CRUDEOILM26MARFUT"
 DEFAULT_EXCHANGE = "MCX"
 DEFAULT_START_DATE = (date.today() - timedelta(days=150)).strftime("%Y-%m-%d")
-DEFAULT_OPTIMIZATION_DAYS = 90
+DEFAULT_OPTIMIZATION_DAYS = 60
 DEFAULT_VALIDATION_DAYS = 30
 DEFAULT_MAX_CONSECUTIVE_LOSSES = 5
 TOP_N = 5
+MINIMUM_TRADES_REQUIRED = 5
 
 
 @dataclass
@@ -79,7 +81,7 @@ def _format_pct(value: float) -> str:
 
 
 def _build_optimization_chart_snippet(top_n_params: List[Dict]) -> str:
-    """Create a compact optimization summary suitable for chart subtitles."""
+    """Create an optimization summary suitable for chart subtitles."""
     snippets = []
     for idx, row in enumerate(top_n_params, start=1):
         snippets.append(
@@ -95,14 +97,18 @@ def _build_optimization_chart_snippet(top_n_params: List[Dict]) -> str:
                 _format_pct(float(row.get("max_drawdown", 0.0))),
             )
         )
-    return " | ".join(snippets)
+    return "<br>".join(snippets)
 
 
-def print_optimization_summary(iteration: int, top_n_params: List[Dict]) -> None:
+def print_optimization_summary(
+    iteration: int, top_n_params: List[Dict], min_trades_required: int
+) -> None:
     print(f"\n🧠 Optimization Summary (Iteration {iteration})")
     print(
-        "Rank | Short | Long | RR  | Trades | Score   | Win Rate | PnL      | Max DD"
+        "   Note: Unique (short,long) MA pairs only; highest RR kept per pair; "
+        f"min trades filter >= {min_trades_required}."
     )
+    print("Rank | Short | Long | RR  | Trades | Score   | Win Rate | PnL      | Max DD")
     print(
         "-----+-------+------+-----+--------+---------+----------+----------+--------"
     )
@@ -233,12 +239,18 @@ def run_iteration(
         optimization_results,
         top_n=TOP_N,
         metric="composite_score",
+        min_total_trades=MINIMUM_TRADES_REQUIRED,
     )
     if not top_n:
         raise RuntimeError(
-            f"No top-n parameter sets were selected for iteration {iteration}"
+            "No top-n parameter sets were selected for iteration "
+            f"{iteration} with min trades >= {MINIMUM_TRADES_REQUIRED}"
         )
-    print_optimization_summary(iteration=iteration, top_n_params=top_n)
+    print_optimization_summary(
+        iteration=iteration,
+        top_n_params=top_n,
+        min_trades_required=MINIMUM_TRADES_REQUIRED,
+    )
 
     top_n_path = iter_dir / "top_n_params.json"
     with open(top_n_path, "w", encoding="utf-8") as f:
@@ -320,7 +332,7 @@ def run_iteration(
     )
     optimization_chart_summary = _build_optimization_chart_snippet(top_n)
     chart_summary_with_opt = (
-        f"{chart_summary} | Opt: {optimization_chart_summary}"
+        f"{chart_summary}<br>Opt Params:<br>{optimization_chart_summary}"
         if optimization_chart_summary
         else chart_summary
     )
