@@ -9,7 +9,7 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -24,6 +24,7 @@ from run_ma_mock_validation_majority_kite import (
 )
 from run_ma_optimization_kite_parallel import run_parallel_optimization_grid
 from run_ma_optimization_kite_parallel_top3 import select_top_n_from_best_by_rr
+from monte_carlo_significance import run_monte_carlo_permutation_test
 
 
 SHORT_WINDOW_RANGE = [5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80]
@@ -48,6 +49,13 @@ LONG_WINDOW_RANGE = [
 ]
 RISK_REWARD_RATIOS = [5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]
 
+# SHORT_WINDOW_RANGE = [10, 20]
+# LONG_WINDOW_RANGE = [
+#     90,
+#     100,
+# ]
+# RISK_REWARD_RATIOS = [5.0, 6.0]
+
 # Global defaults for CLI-required runtime fields
 DEFAULT_SYMBOL = "NATGASMINI26MARFUT"
 # DEFAULT_SYMBOL = "CRUDEOILM26MARFUT"
@@ -58,6 +66,10 @@ DEFAULT_VALIDATION_DAYS = 30
 DEFAULT_MAX_CONSECUTIVE_LOSSES = 5
 TOP_N = 5
 MINIMUM_TRADES_REQUIRED = 5
+ENABLE_MONTE_CARLO_SIGNIFICANCE = True
+MONTE_CARLO_PERMUTATIONS = 10
+MONTE_CARLO_P_VALUE_THRESHOLD = 0.05
+MONTE_CARLO_RANDOM_SEED = 42
 
 
 @dataclass
@@ -172,6 +184,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--interval", default="15m")
     parser.add_argument("--initial-balance", type=float, default=10000.0)
     parser.add_argument("--max-workers", type=int, default=None)
+    parser.add_argument(
+        "--enable-monte-carlo",
+        action="store_true",
+        default=ENABLE_MONTE_CARLO_SIGNIFICANCE,
+        help="Enable Monte Carlo permutation significance gate before validation.",
+    )
+    parser.add_argument(
+        "--monte-carlo-permutations",
+        type=int,
+        default=MONTE_CARLO_PERMUTATIONS,
+        help="Number of shuffled permutations used for significance test.",
+    )
+    parser.add_argument(
+        "--monte-carlo-p-threshold",
+        type=float,
+        default=MONTE_CARLO_P_VALUE_THRESHOLD,
+        help="Maximum p-value to accept optimization as significant.",
+    )
+    parser.add_argument(
+        "--monte-carlo-random-seed",
+        type=int,
+        default=MONTE_CARLO_RANDOM_SEED,
+        help="Seed for permutation generation.",
+    )
     parser.add_argument("--out", default="ma_walkforward_results_kite")
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
@@ -197,7 +233,11 @@ def run_iteration(
     initial_balance: float,
     quiet: bool,
     max_workers: int,
-) -> Tuple[IterationSummary, date]:
+    enable_monte_carlo: bool,
+    monte_carlo_permutations: int,
+    monte_carlo_p_threshold: float,
+    monte_carlo_random_seed: int,
+) -> Tuple[Optional[IterationSummary], date]:
     iter_dir = out_dir / f"iteration_{iteration:03d}"
     iter_dir.mkdir(parents=True, exist_ok=True)
 
@@ -251,6 +291,51 @@ def run_iteration(
         top_n_params=top_n,
         min_trades_required=MINIMUM_TRADES_REQUIRED,
     )
+
+    if enable_monte_carlo:
+        print(
+            f"🎲 Running Monte Carlo permutation test ({monte_carlo_permutations} permutations)..."
+        )
+        monte_carlo_summary = run_monte_carlo_permutation_test(
+            data=optimization_data,
+            short_window_range=SHORT_WINDOW_RANGE,
+            long_window_range=LONG_WINDOW_RANGE,
+            risk_reward_ratios=RISK_REWARD_RATIOS,
+            actual_optimization_results=optimization_results,
+            trading_fee=0.0,
+            n_permutations=monte_carlo_permutations,
+            p_value_threshold=monte_carlo_p_threshold,
+            random_seed=monte_carlo_random_seed,
+            max_workers=max_workers,
+            min_total_trades=MINIMUM_TRADES_REQUIRED,
+        )
+        mc_path = iter_dir / "monte_carlo_significance.json"
+        with open(mc_path, "w", encoding="utf-8") as f:
+            json.dump(monte_carlo_summary, f, indent=2)
+
+        print(
+            "   Monte Carlo result | "
+            f"actual={monte_carlo_summary['actual_score']:.6f} | "
+            f"p-value={monte_carlo_summary['p_value']:.4f} "
+            f"(threshold={monte_carlo_p_threshold:.4f})"
+        )
+        best_params = monte_carlo_summary.get("actual_best_params")
+        if best_params:
+            print(
+                "   Monte Carlo baseline best mean-return/trade | "
+                f"Short={best_params['short_window']} | "
+                f"Long={best_params['long_window']} | "
+                f"RR={best_params['risk_reward_ratio']:.2f} | "
+                f"Trades={best_params['total_trades']} | "
+                f"PnL={best_params['total_pnl']*100:.2f}% | "
+                f"Mean/Trade={best_params['mean_return_per_trade']:.6f}"
+            )
+        if not monte_carlo_summary["is_significant"]:
+            print(
+                "   ⏭️  Skipping validation for this iteration: "
+                "optimizer result not statistically significant."
+            )
+            return None, requested_validation_end
 
     top_n_path = iter_dir / "top_n_params.json"
     with open(top_n_path, "w", encoding="utf-8") as f:
@@ -482,6 +567,10 @@ def main() -> None:
         raise ValueError("validation-stop-days must be > 0")
     if args.max_consecutive_losses <= 0:
         raise ValueError("max-consecutive-losses must be > 0")
+    if args.monte_carlo_permutations <= 0:
+        raise ValueError("monte-carlo-permutations must be > 0")
+    if not (0.0 <= args.monte_carlo_p_threshold <= 1.0):
+        raise ValueError("monte-carlo-p-threshold must be between 0 and 1")
 
     iterations: List[IterationSummary] = []
     cursor = start_date
@@ -516,11 +605,16 @@ def main() -> None:
             initial_balance=args.initial_balance,
             quiet=args.quiet,
             max_workers=args.max_workers,
+            enable_monte_carlo=args.enable_monte_carlo,
+            monte_carlo_permutations=args.monte_carlo_permutations,
+            monte_carlo_p_threshold=args.monte_carlo_p_threshold,
+            monte_carlo_random_seed=args.monte_carlo_random_seed,
         )
-        iterations.append(iteration_summary)
-        print_iteration_validation_summary(
-            iteration_summary, initial_balance=args.initial_balance
-        )
+        if iteration_summary is not None:
+            iterations.append(iteration_summary)
+            print_iteration_validation_summary(
+                iteration_summary, initial_balance=args.initial_balance
+            )
 
         next_optimization_start = actual_validation_end - timedelta(
             days=DEFAULT_OPTIMIZATION_DAYS
@@ -532,9 +626,11 @@ def main() -> None:
         iteration += 1
 
     if not iterations:
-        raise RuntimeError(
-            "No iterations were executed. Check start-date and day windows."
+        print(
+            "\n⚠️ No validation iterations were completed. "
+            "All windows were skipped or out of range."
         )
+        return
 
     summary_rows = []
     for item in iterations:
@@ -578,6 +674,10 @@ def main() -> None:
             "validation_stop_days": validation_stop_days,
             "max_consecutive_losses": args.max_consecutive_losses,
             "initial_balance": args.initial_balance,
+            "enable_monte_carlo": args.enable_monte_carlo,
+            "monte_carlo_permutations": args.monte_carlo_permutations,
+            "monte_carlo_p_threshold": args.monte_carlo_p_threshold,
+            "monte_carlo_random_seed": args.monte_carlo_random_seed,
         },
         "combined_metrics": build_combined_summary(iterations, args.initial_balance),
         "iterations": [asdict(i) for i in iterations],
