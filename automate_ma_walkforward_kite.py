@@ -60,16 +60,20 @@ RISK_REWARD_RATIOS = [5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]
 DEFAULT_SYMBOL = "NATGASMINI26MARFUT"
 # DEFAULT_SYMBOL = "CRUDEOILM26MARFUT"
 DEFAULT_EXCHANGE = "MCX"
-DEFAULT_START_DATE = (date.today() - timedelta(days=150)).strftime("%Y-%m-%d")
+DEFAULT_START_DATE = (date.today() - timedelta(days=130)).strftime("%Y-%m-%d")
 DEFAULT_OPTIMIZATION_DAYS = 60
 DEFAULT_VALIDATION_DAYS = 30
 DEFAULT_MAX_CONSECUTIVE_LOSSES = 5
-TOP_N = 5
+TOP_N = 1
 MINIMUM_TRADES_REQUIRED = 5
-ENABLE_MONTE_CARLO_SIGNIFICANCE = True
-MONTE_CARLO_PERMUTATIONS = 10
+ENABLE_MONTE_CARLO_SIGNIFICANCE = False
+MONTE_CARLO_PERMUTATIONS = 100
 MONTE_CARLO_P_VALUE_THRESHOLD = 0.05
 MONTE_CARLO_RANDOM_SEED = 42
+MONTE_CARLO_EARLY_STOPPING = True
+MONTE_CARLO_SHORT_STEP = 5
+MONTE_CARLO_LONG_STEP = 5
+MONTE_CARLO_RR_STEP = 3
 
 
 @dataclass
@@ -186,7 +190,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-workers", type=int, default=None)
     parser.add_argument(
         "--enable-monte-carlo",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=ENABLE_MONTE_CARLO_SIGNIFICANCE,
         help="Enable Monte Carlo permutation significance gate before validation.",
     )
@@ -208,6 +212,30 @@ def parse_args() -> argparse.Namespace:
         default=MONTE_CARLO_RANDOM_SEED,
         help="Seed for permutation generation.",
     )
+    parser.add_argument(
+        "--monte-carlo-early-stop",
+        action=argparse.BooleanOptionalAction,
+        default=MONTE_CARLO_EARLY_STOPPING,
+        help="Enable/disable early stopping using p-value bounds during Monte Carlo.",
+    )
+    parser.add_argument(
+        "--monte-carlo-short-step",
+        type=int,
+        default=MONTE_CARLO_SHORT_STEP,
+        help="Downsample short MA candidates for Monte Carlo (1 keeps full range).",
+    )
+    parser.add_argument(
+        "--monte-carlo-long-step",
+        type=int,
+        default=MONTE_CARLO_LONG_STEP,
+        help="Downsample long MA candidates for Monte Carlo (1 keeps full range).",
+    )
+    parser.add_argument(
+        "--monte-carlo-rr-step",
+        type=int,
+        default=MONTE_CARLO_RR_STEP,
+        help="Downsample RR candidates for Monte Carlo (1 keeps full range).",
+    )
     parser.add_argument("--out", default="ma_walkforward_results_kite")
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
@@ -215,6 +243,16 @@ def parse_args() -> argparse.Namespace:
 
 def to_iso(d: date) -> str:
     return d.strftime("%Y-%m-%d")
+
+
+def _downsample_values(values: List, step: int) -> List:
+    values = list(values)
+    if step <= 1 or len(values) <= 1:
+        return values
+    sampled = values[::step]
+    if sampled[-1] != values[-1]:
+        sampled.append(values[-1])
+    return sampled
 
 
 def run_iteration(
@@ -237,6 +275,10 @@ def run_iteration(
     monte_carlo_permutations: int,
     monte_carlo_p_threshold: float,
     monte_carlo_random_seed: int,
+    monte_carlo_early_stop: bool,
+    monte_carlo_short_step: int,
+    monte_carlo_long_step: int,
+    monte_carlo_rr_step: int,
 ) -> Tuple[Optional[IterationSummary], date]:
     iter_dir = out_dir / f"iteration_{iteration:03d}"
     iter_dir.mkdir(parents=True, exist_ok=True)
@@ -293,14 +335,26 @@ def run_iteration(
     )
 
     if enable_monte_carlo:
+        mc_short_range = _downsample_values(SHORT_WINDOW_RANGE, monte_carlo_short_step)
+        mc_long_range = _downsample_values(LONG_WINDOW_RANGE, monte_carlo_long_step)
+        mc_rr_range = _downsample_values(RISK_REWARD_RATIOS, monte_carlo_rr_step)
         print(
             f"🎲 Running Monte Carlo permutation test ({monte_carlo_permutations} permutations)..."
         )
+        print(
+            "   Monte Carlo grid | "
+            f"short {len(SHORT_WINDOW_RANGE)}->{len(mc_short_range)} "
+            f"(step={monte_carlo_short_step}) | "
+            f"long {len(LONG_WINDOW_RANGE)}->{len(mc_long_range)} "
+            f"(step={monte_carlo_long_step}) | "
+            f"rr {len(RISK_REWARD_RATIOS)}->{len(mc_rr_range)} "
+            f"(step={monte_carlo_rr_step})"
+        )
         monte_carlo_summary = run_monte_carlo_permutation_test(
             data=optimization_data,
-            short_window_range=SHORT_WINDOW_RANGE,
-            long_window_range=LONG_WINDOW_RANGE,
-            risk_reward_ratios=RISK_REWARD_RATIOS,
+            short_window_range=mc_short_range,
+            long_window_range=mc_long_range,
+            risk_reward_ratios=mc_rr_range,
             actual_optimization_results=optimization_results,
             trading_fee=0.0,
             n_permutations=monte_carlo_permutations,
@@ -308,6 +362,7 @@ def run_iteration(
             random_seed=monte_carlo_random_seed,
             max_workers=max_workers,
             min_total_trades=MINIMUM_TRADES_REQUIRED,
+            enable_early_stopping=monte_carlo_early_stop,
         )
         mc_path = iter_dir / "monte_carlo_significance.json"
         with open(mc_path, "w", encoding="utf-8") as f:
@@ -317,8 +372,20 @@ def run_iteration(
             "   Monte Carlo result | "
             f"actual={monte_carlo_summary['actual_score']:.6f} | "
             f"p-value={monte_carlo_summary['p_value']:.4f} "
-            f"(threshold={monte_carlo_p_threshold:.4f})"
+            f"(threshold={monte_carlo_p_threshold:.4f}) | "
+            f"completed={monte_carlo_summary['n_permutations_completed']}/"
+            f"{monte_carlo_summary['n_permutations']}"
         )
+        print(
+            "   Monte Carlo p-value bounds | "
+            f"[{monte_carlo_summary['p_value_lower_bound']:.4f}, "
+            f"{monte_carlo_summary['p_value_upper_bound']:.4f}]"
+        )
+        if monte_carlo_summary.get("early_stopped"):
+            print(
+                "   Monte Carlo early stop triggered | "
+                f"reason={monte_carlo_summary.get('early_stop_reason', 'unknown')}"
+            )
         best_params = monte_carlo_summary.get("actual_best_params")
         if best_params:
             print(
@@ -571,6 +638,12 @@ def main() -> None:
         raise ValueError("monte-carlo-permutations must be > 0")
     if not (0.0 <= args.monte_carlo_p_threshold <= 1.0):
         raise ValueError("monte-carlo-p-threshold must be between 0 and 1")
+    if args.monte_carlo_short_step <= 0:
+        raise ValueError("monte-carlo-short-step must be > 0")
+    if args.monte_carlo_long_step <= 0:
+        raise ValueError("monte-carlo-long-step must be > 0")
+    if args.monte_carlo_rr_step <= 0:
+        raise ValueError("monte-carlo-rr-step must be > 0")
 
     iterations: List[IterationSummary] = []
     cursor = start_date
@@ -609,6 +682,10 @@ def main() -> None:
             monte_carlo_permutations=args.monte_carlo_permutations,
             monte_carlo_p_threshold=args.monte_carlo_p_threshold,
             monte_carlo_random_seed=args.monte_carlo_random_seed,
+            monte_carlo_early_stop=args.monte_carlo_early_stop,
+            monte_carlo_short_step=args.monte_carlo_short_step,
+            monte_carlo_long_step=args.monte_carlo_long_step,
+            monte_carlo_rr_step=args.monte_carlo_rr_step,
         )
         if iteration_summary is not None:
             iterations.append(iteration_summary)
@@ -678,6 +755,10 @@ def main() -> None:
             "monte_carlo_permutations": args.monte_carlo_permutations,
             "monte_carlo_p_threshold": args.monte_carlo_p_threshold,
             "monte_carlo_random_seed": args.monte_carlo_random_seed,
+            "monte_carlo_early_stop": args.monte_carlo_early_stop,
+            "monte_carlo_short_step": args.monte_carlo_short_step,
+            "monte_carlo_long_step": args.monte_carlo_long_step,
+            "monte_carlo_rr_step": args.monte_carlo_rr_step,
         },
         "combined_metrics": build_combined_summary(iterations, args.initial_balance),
         "iterations": [asdict(i) for i in iterations],

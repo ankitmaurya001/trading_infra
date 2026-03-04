@@ -207,6 +207,7 @@ def run_parallel_optimization_grid(
     risk_reward_ratios,
     trading_fee=0.0,
     max_workers=None,
+    show_progress=True,
 ):
     """
     Run optimization grid in parallel using multiprocessing.
@@ -273,7 +274,7 @@ def run_parallel_optimization_grid(
 
         # Process completed tasks with progress bar
         completed = 0
-        if HAS_TQDM:
+        if HAS_TQDM and show_progress:
             pbar = tqdm(total=total_combinations, desc="Optimizing", unit="combo")
         else:
             pbar = None
@@ -286,7 +287,9 @@ def run_parallel_optimization_grid(
                     completed += 1
                     if pbar:
                         pbar.update(1)
-                    elif completed % max(1, total_combinations // 20) == 0:
+                    elif show_progress and completed % max(
+                        1, total_combinations // 20
+                    ) == 0:
                         # Print progress every 5% if no tqdm
                         print(
                             f"   Progress: {completed}/{total_combinations} ({100*completed/total_combinations:.1f}%)"

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import multiprocessing
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
@@ -70,24 +70,24 @@ def _build_synthetic_series_from_permuted_returns(
     seed: int,
 ) -> pd.DataFrame:
     synthetic = data.copy()
-    close = data["Close"].astype(float)
+    ohlc_cols = [col for col in ("Open", "High", "Low", "Close") if col in data.columns]
+    if "Close" not in ohlc_cols:
+        raise ValueError("Input data must include 'Close' column for Monte Carlo test.")
 
-    close_returns = close.pct_change().fillna(0.0).to_numpy()
-    shuffled = close_returns.copy()
+    ohlc_prices = data[ohlc_cols].astype(float)
+    ohlc_returns = ohlc_prices.pct_change().replace([np.inf, -np.inf], 0.0).fillna(0.0)
+    shuffled = ohlc_returns.to_numpy().copy()
     rng = np.random.default_rng(seed)
     if len(shuffled) > 1:
-        shuffled[1:] = rng.permutation(shuffled[1:])
+        shuffled[1:] = rng.permutation(shuffled[1:], axis=0)
 
-    synthetic_close = np.empty_like(shuffled, dtype=float)
-    synthetic_close[0] = float(close.iloc[0])
+    synthetic_ohlc = np.empty_like(shuffled, dtype=float)
+    synthetic_ohlc[0] = ohlc_prices.iloc[0].to_numpy(dtype=float)
     for idx in range(1, len(shuffled)):
-        synthetic_close[idx] = synthetic_close[idx - 1] * (1.0 + shuffled[idx])
+        synthetic_ohlc[idx] = synthetic_ohlc[idx - 1] * (1.0 + shuffled[idx])
 
-    # Preserve intrabar relationships by scaling OHLC against original close path.
-    scaling = synthetic_close / close.to_numpy(dtype=float)
-    for col in ("Open", "High", "Low", "Close"):
-        if col in synthetic.columns:
-            synthetic[col] = data[col].astype(float).to_numpy() * scaling
+    for col_idx, col in enumerate(ohlc_cols):
+        synthetic[col] = synthetic_ohlc[:, col_idx]
 
     return synthetic
 
@@ -113,6 +113,7 @@ def _permutation_worker(args: Tuple) -> float:
         risk_reward_ratios=risk_reward_ratios,
         trading_fee=trading_fee,
         max_workers=1,
+        show_progress=False,
     )
     return _best_mean_return_result(
         optimization_results, min_total_trades=min_total_trades
@@ -131,6 +132,7 @@ def run_monte_carlo_permutation_test(
     random_seed: int = 42,
     max_workers: Optional[int] = None,
     min_total_trades: int = 1,
+    enable_early_stopping: bool = True,
 ) -> Dict:
     """Run permutation test and return significance diagnostics."""
     short_window_range = list(short_window_range)
@@ -148,36 +150,109 @@ def run_monte_carlo_permutation_test(
 
     data_payload = _dataframe_to_payload(data)
     seeds = [random_seed + idx for idx in range(n_permutations)]
-    worker_args = [
-        (
-            data_payload,
-            seed,
-            short_window_range,
-            long_window_range,
-            risk_reward_ratios,
-            trading_fee,
-            min_total_trades,
-        )
-        for seed in seeds
-    ]
 
     shuffled_scores: List[float] = []
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(_permutation_worker, args) for args in worker_args]
-        for future in as_completed(futures):
-            shuffled_scores.append(float(future.result()))
+    extreme_count = 0
+    n_completed = 0
+    n_requested = int(n_permutations)
+    early_stopped = False
+    early_stop_reason = ""
 
-    extreme_count = sum(1 for score in shuffled_scores if score >= actual_score)
-    p_value = extreme_count / max(n_permutations, 1)
+    next_seed_idx = 0
+    futures: Dict = {}
+    executor = ProcessPoolExecutor(max_workers=max_workers)
+    try:
+        initial_submissions = min(max_workers, n_requested)
+        for _ in range(initial_submissions):
+            args = (
+                data_payload,
+                seeds[next_seed_idx],
+                short_window_range,
+                long_window_range,
+                risk_reward_ratios,
+                trading_fee,
+                min_total_trades,
+            )
+            future = executor.submit(_permutation_worker, args)
+            futures[future] = next_seed_idx
+            next_seed_idx += 1
+
+        while futures:
+            done, _ = wait(list(futures.keys()), return_when=FIRST_COMPLETED)
+            stop_now = False
+            for future in done:
+                futures.pop(future, None)
+                score = float(future.result())
+                shuffled_scores.append(score)
+                n_completed += 1
+                if score >= actual_score:
+                    extreme_count += 1
+
+                remaining = n_requested - n_completed
+                p_lower_bound = extreme_count / max(n_requested, 1)
+                p_upper_bound = (extreme_count + remaining) / max(n_requested, 1)
+                if enable_early_stopping and p_lower_bound > p_value_threshold:
+                    early_stopped = True
+                    early_stop_reason = (
+                        "cannot_be_significant_anymore"
+                    )
+                    stop_now = True
+                    break
+                if enable_early_stopping and p_upper_bound <= p_value_threshold:
+                    early_stopped = True
+                    early_stop_reason = (
+                        "guaranteed_significant"
+                    )
+                    stop_now = True
+                    break
+
+                if next_seed_idx < n_requested:
+                    args = (
+                        data_payload,
+                        seeds[next_seed_idx],
+                        short_window_range,
+                        long_window_range,
+                        risk_reward_ratios,
+                        trading_fee,
+                        min_total_trades,
+                    )
+                    next_future = executor.submit(_permutation_worker, args)
+                    futures[next_future] = next_seed_idx
+                    next_seed_idx += 1
+
+            if stop_now:
+                for pending in list(futures.keys()):
+                    pending.cancel()
+                futures.clear()
+                break
+    finally:
+        executor.shutdown(wait=not early_stopped, cancel_futures=early_stopped)
+
+    remaining = n_requested - n_completed
+    p_lower_bound = extreme_count / max(n_requested, 1)
+    p_upper_bound = (extreme_count + remaining) / max(n_requested, 1)
+    is_significant = bool(p_upper_bound <= p_value_threshold)
+    if n_completed == n_requested:
+        p_value = p_lower_bound
+    elif is_significant:
+        p_value = p_upper_bound
+    else:
+        p_value = p_lower_bound
 
     return {
         "actual_score": float(actual_score),
         "actual_best_params": actual_best["best_params"],
-        "n_permutations": int(n_permutations),
+        "n_permutations": n_requested,
+        "n_permutations_completed": int(n_completed),
         "shuffled_scores": shuffled_scores,
         "extreme_count": int(extreme_count),
         "p_value": float(p_value),
+        "p_value_lower_bound": float(p_lower_bound),
+        "p_value_upper_bound": float(p_upper_bound),
         "p_value_threshold": float(p_value_threshold),
-        "is_significant": bool(p_value <= p_value_threshold),
+        "is_significant": is_significant,
+        "early_stopping_enabled": bool(enable_early_stopping),
+        "early_stopped": bool(early_stopped),
+        "early_stop_reason": early_stop_reason,
         "score_metric": "best_mean_return_per_trade",
     }
