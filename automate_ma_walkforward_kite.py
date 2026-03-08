@@ -6,12 +6,15 @@ import contextlib
 import io
 import json
 import os
+import webbrowser
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from ma_3d_optimization_visualizer import MAOptimization3DVisualizer
 from run_ma_mock_validation_majority_kite import (
@@ -25,6 +28,7 @@ from run_ma_mock_validation_majority_kite import (
 from run_ma_optimization_kite_parallel import run_parallel_optimization_grid
 from run_ma_optimization_kite_parallel_top3 import select_top_n_from_best_by_rr
 from monte_carlo_significance import run_monte_carlo_permutation_test
+from monte_carlo_signigfincae_v2 import run_monte_carlo_param_significance_test_v2
 
 
 SHORT_WINDOW_RANGE = [5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80]
@@ -66,14 +70,15 @@ DEFAULT_VALIDATION_DAYS = 30
 DEFAULT_MAX_CONSECUTIVE_LOSSES = 5
 TOP_N = 1
 MINIMUM_TRADES_REQUIRED = 5
-ENABLE_MONTE_CARLO_SIGNIFICANCE = False
-MONTE_CARLO_PERMUTATIONS = 100
-MONTE_CARLO_P_VALUE_THRESHOLD = 0.05
+ENABLE_MONTE_CARLO_SIGNIFICANCE = True
+MONTE_CARLO_PERMUTATIONS = 500
+MONTE_CARLO_P_VALUE_THRESHOLD = 0.2
 MONTE_CARLO_RANDOM_SEED = 42
-MONTE_CARLO_EARLY_STOPPING = True
+MONTE_CARLO_EARLY_STOPPING = False
 MONTE_CARLO_SHORT_STEP = 5
 MONTE_CARLO_LONG_STEP = 5
 MONTE_CARLO_RR_STEP = 3
+MONTE_CARLO_METHOD = "param_significance_v2"
 
 
 @dataclass
@@ -90,6 +95,9 @@ class IterationSummary:
     selected_params: List[Dict]
     validation_metrics: Dict
     validation_trades: int
+    monte_carlo_enabled: bool
+    monte_carlo_method: Optional[str]
+    monte_carlo_p_value: Optional[float]
 
 
 def _format_pct(value: float) -> str:
@@ -114,6 +122,102 @@ def _build_optimization_chart_snippet(top_n_params: List[Dict]) -> str:
             )
         )
     return "<br>".join(snippets)
+
+
+def create_monte_carlo_distribution_chart(
+    monte_carlo_summary: Dict,
+    monte_carlo_method: str,
+    output_path: str,
+) -> bool:
+    """Create histogram view of Monte Carlo shuffled scores."""
+    if monte_carlo_method == "optimizer_permutation":
+        shuffled_scores = monte_carlo_summary.get("shuffled_scores", [])
+        if not shuffled_scores:
+            return False
+
+        actual_score = float(monte_carlo_summary.get("actual_score", 0.0))
+        fig = go.Figure()
+        fig.add_trace(
+            go.Histogram(
+                x=shuffled_scores,
+                nbinsx=40,
+                name="Shuffled Scores",
+                marker_color="#2E86AB",
+                opacity=0.85,
+            )
+        )
+        fig.add_vline(
+            x=actual_score,
+            line_dash="dash",
+            line_color="#D7263D",
+            annotation_text=f"Actual score: {actual_score:.6f}",
+            annotation_position="top right",
+        )
+        fig.update_layout(
+            title="Monte Carlo Score Distribution (Optimizer Permutation)",
+            xaxis_title="Best Mean Return per Trade (Shuffled)",
+            yaxis_title="Frequency",
+            bargap=0.08,
+            template="plotly_white",
+        )
+        fig.write_html(output_path)
+        return True
+
+    param_results = monte_carlo_summary.get("param_results", [])
+    params_with_scores = [
+        p for p in param_results if len(p.get("shuffled_scores", [])) > 0
+    ]
+    if not params_with_scores:
+        return False
+
+    rows = len(params_with_scores)
+    fig = make_subplots(
+        rows=rows,
+        cols=1,
+        vertical_spacing=0.08,
+        subplot_titles=[
+            (
+                f"SW={int(p['short_window'])}, LW={int(p['long_window'])}, "
+                f"RR={float(p['risk_reward_ratio']):.2f}, p={float(p['p_value']):.4f}"
+            )
+            for p in params_with_scores
+        ],
+    )
+    for idx, param in enumerate(params_with_scores, start=1):
+        shuffled_scores = param.get("shuffled_scores", [])
+        actual_score = float(param.get("mean_return_per_trade", 0.0))
+        fig.add_trace(
+            go.Histogram(
+                x=shuffled_scores,
+                nbinsx=40,
+                name=f"Param {idx}",
+                marker_color="#2E86AB",
+                opacity=0.85,
+                showlegend=False,
+            ),
+            row=idx,
+            col=1,
+        )
+        fig.add_vline(
+            x=actual_score,
+            line_dash="dash",
+            line_color="#D7263D",
+            annotation_text=f"Actual: {actual_score:.6f}",
+            annotation_position="top right",
+            row=idx,
+            col=1,
+        )
+        fig.update_xaxes(title_text="Mean Return per Trade (Shuffled)", row=idx, col=1)
+        fig.update_yaxes(title_text="Frequency", row=idx, col=1)
+
+    fig.update_layout(
+        title="Monte Carlo Score Distribution (Param Significance V2)",
+        template="plotly_white",
+        height=max(380, rows * 320),
+        bargap=0.08,
+    )
+    fig.write_html(output_path)
+    return True
 
 
 def print_optimization_summary(
@@ -219,6 +323,19 @@ def parse_args() -> argparse.Namespace:
         help="Enable/disable early stopping using p-value bounds during Monte Carlo.",
     )
     parser.add_argument(
+        "--monte-carlo-method",
+        "--global-monte-carlo-method",
+        "--mc-method",
+        dest="monte_carlo_method",
+        choices=["optimizer_permutation", "param_significance_v2"],
+        default=MONTE_CARLO_METHOD,
+        help=(
+            "Monte Carlo mode: optimizer_permutation reruns reduced optimization on shuffled data; "
+            "param_significance_v2 tests selected Top-N params only (faster). "
+            "This applies globally across all walk-forward iterations."
+        ),
+    )
+    parser.add_argument(
         "--monte-carlo-short-step",
         type=int,
         default=MONTE_CARLO_SHORT_STEP,
@@ -279,6 +396,7 @@ def run_iteration(
     monte_carlo_short_step: int,
     monte_carlo_long_step: int,
     monte_carlo_rr_step: int,
+    monte_carlo_method: str,
 ) -> Tuple[Optional[IterationSummary], date]:
     iter_dir = out_dir / f"iteration_{iteration:03d}"
     iter_dir.mkdir(parents=True, exist_ok=True)
@@ -334,69 +452,140 @@ def run_iteration(
         min_trades_required=MINIMUM_TRADES_REQUIRED,
     )
 
+    monte_carlo_p_value: Optional[float] = None
+
     if enable_monte_carlo:
-        mc_short_range = _downsample_values(SHORT_WINDOW_RANGE, monte_carlo_short_step)
-        mc_long_range = _downsample_values(LONG_WINDOW_RANGE, monte_carlo_long_step)
-        mc_rr_range = _downsample_values(RISK_REWARD_RATIOS, monte_carlo_rr_step)
         print(
-            f"🎲 Running Monte Carlo permutation test ({monte_carlo_permutations} permutations)..."
+            "🎲 Running Monte Carlo significance test "
+            f"({monte_carlo_permutations} permutations, method={monte_carlo_method})..."
         )
-        print(
-            "   Monte Carlo grid | "
-            f"short {len(SHORT_WINDOW_RANGE)}->{len(mc_short_range)} "
-            f"(step={monte_carlo_short_step}) | "
-            f"long {len(LONG_WINDOW_RANGE)}->{len(mc_long_range)} "
-            f"(step={monte_carlo_long_step}) | "
-            f"rr {len(RISK_REWARD_RATIOS)}->{len(mc_rr_range)} "
-            f"(step={monte_carlo_rr_step})"
-        )
-        monte_carlo_summary = run_monte_carlo_permutation_test(
-            data=optimization_data,
-            short_window_range=mc_short_range,
-            long_window_range=mc_long_range,
-            risk_reward_ratios=mc_rr_range,
-            actual_optimization_results=optimization_results,
-            trading_fee=0.0,
-            n_permutations=monte_carlo_permutations,
-            p_value_threshold=monte_carlo_p_threshold,
-            random_seed=monte_carlo_random_seed,
-            max_workers=max_workers,
-            min_total_trades=MINIMUM_TRADES_REQUIRED,
-            enable_early_stopping=monte_carlo_early_stop,
-        )
+        if monte_carlo_method == "optimizer_permutation":
+            mc_short_range = _downsample_values(
+                SHORT_WINDOW_RANGE, monte_carlo_short_step
+            )
+            mc_long_range = _downsample_values(LONG_WINDOW_RANGE, monte_carlo_long_step)
+            mc_rr_range = _downsample_values(RISK_REWARD_RATIOS, monte_carlo_rr_step)
+            print(
+                "   Monte Carlo grid | "
+                f"short {len(SHORT_WINDOW_RANGE)}->{len(mc_short_range)} "
+                f"(step={monte_carlo_short_step}) | "
+                f"long {len(LONG_WINDOW_RANGE)}->{len(mc_long_range)} "
+                f"(step={monte_carlo_long_step}) | "
+                f"rr {len(RISK_REWARD_RATIOS)}->{len(mc_rr_range)} "
+                f"(step={monte_carlo_rr_step})"
+            )
+            monte_carlo_summary = run_monte_carlo_permutation_test(
+                data=optimization_data,
+                short_window_range=mc_short_range,
+                long_window_range=mc_long_range,
+                risk_reward_ratios=mc_rr_range,
+                actual_optimization_results=optimization_results,
+                trading_fee=0.0,
+                n_permutations=monte_carlo_permutations,
+                p_value_threshold=monte_carlo_p_threshold,
+                random_seed=monte_carlo_random_seed,
+                max_workers=max_workers,
+                min_total_trades=MINIMUM_TRADES_REQUIRED,
+                enable_early_stopping=monte_carlo_early_stop,
+            )
+        else:
+            monte_carlo_summary = run_monte_carlo_param_significance_test_v2(
+                data=optimization_data,
+                selected_params=top_n,
+                trading_fee=0.0,
+                n_permutations=monte_carlo_permutations,
+                p_value_threshold=monte_carlo_p_threshold,
+                random_seed=monte_carlo_random_seed,
+                max_workers=max_workers,
+                min_total_trades=MINIMUM_TRADES_REQUIRED,
+                enable_early_stopping=monte_carlo_early_stop,
+            )
         mc_path = iter_dir / "monte_carlo_significance.json"
         with open(mc_path, "w", encoding="utf-8") as f:
             json.dump(monte_carlo_summary, f, indent=2)
+        mc_distribution_path = iter_dir / "monte_carlo_score_distribution.html"
+        mc_chart_created = create_monte_carlo_distribution_chart(
+            monte_carlo_summary=monte_carlo_summary,
+            monte_carlo_method=monte_carlo_method,
+            output_path=str(mc_distribution_path),
+        )
+        if mc_chart_created:
+            print(f"   Monte Carlo score distribution chart: {mc_distribution_path}")
+            webbrowser.open(f"file://{mc_distribution_path.resolve()}")
 
-        print(
-            "   Monte Carlo result | "
-            f"actual={monte_carlo_summary['actual_score']:.6f} | "
-            f"p-value={monte_carlo_summary['p_value']:.4f} "
-            f"(threshold={monte_carlo_p_threshold:.4f}) | "
-            f"completed={monte_carlo_summary['n_permutations_completed']}/"
-            f"{monte_carlo_summary['n_permutations']}"
-        )
-        print(
-            "   Monte Carlo p-value bounds | "
-            f"[{monte_carlo_summary['p_value_lower_bound']:.4f}, "
-            f"{monte_carlo_summary['p_value_upper_bound']:.4f}]"
-        )
+        if monte_carlo_method == "optimizer_permutation":
+            monte_carlo_p_value = float(monte_carlo_summary.get("p_value", 1.0))
+            print(
+                "   Monte Carlo result | "
+                f"actual={monte_carlo_summary['actual_score']:.6f} | "
+                f"p-value={monte_carlo_summary['p_value']:.4f} "
+                f"(threshold={monte_carlo_p_threshold:.4f}) | "
+                f"completed={monte_carlo_summary['n_permutations_completed']}/"
+                f"{monte_carlo_summary['n_permutations']}"
+            )
+            print(
+                "   Monte Carlo p-value bounds | "
+                f"[{monte_carlo_summary['p_value_lower_bound']:.4f}, "
+                f"{monte_carlo_summary['p_value_upper_bound']:.4f}]"
+            )
+        else:
+            param_results = monte_carlo_summary.get("param_results", [])
+            if param_results:
+                monte_carlo_p_value = float(
+                    min(float(p.get("p_value", 1.0)) for p in param_results)
+                )
+            print(
+                "   Monte Carlo result | "
+                f"significant={monte_carlo_summary['is_significant']} | "
+                f"completed={monte_carlo_summary['n_permutations_completed']}/"
+                f"{monte_carlo_summary['n_permutations']}"
+            )
+            for idx, param_result in enumerate(
+                monte_carlo_summary["param_results"], start=1
+            ):
+                print(
+                    "      Param #{} | SW={} LW={} RR={:.2f} | mean/trade={:.6f} | "
+                    "p-value={:.4f} | significant={}".format(
+                        idx,
+                        param_result["short_window"],
+                        param_result["long_window"],
+                        param_result["risk_reward_ratio"],
+                        param_result.get("mean_return_per_trade", -999.0),
+                        param_result["p_value"],
+                        param_result["is_significant"],
+                    )
+                )
         if monte_carlo_summary.get("early_stopped"):
             print(
                 "   Monte Carlo early stop triggered | "
                 f"reason={monte_carlo_summary.get('early_stop_reason', 'unknown')}"
             )
-        best_params = monte_carlo_summary.get("actual_best_params")
-        if best_params:
-            print(
-                "   Monte Carlo baseline best mean-return/trade | "
-                f"Short={best_params['short_window']} | "
-                f"Long={best_params['long_window']} | "
-                f"RR={best_params['risk_reward_ratio']:.2f} | "
-                f"Trades={best_params['total_trades']} | "
-                f"PnL={best_params['total_pnl']*100:.2f}% | "
-                f"Mean/Trade={best_params['mean_return_per_trade']:.6f}"
+
+        if monte_carlo_method == "optimizer_permutation":
+            best_params = monte_carlo_summary.get("actual_best_params")
+            if best_params:
+                print(
+                    "   Monte Carlo baseline best mean-return/trade | "
+                    f"Short={best_params['short_window']} | "
+                    f"Long={best_params['long_window']} | "
+                    f"RR={best_params['risk_reward_ratio']:.2f} | "
+                    f"Trades={best_params['total_trades']} | "
+                    f"PnL={best_params['total_pnl']*100:.2f}% | "
+                    f"Mean/Trade={best_params['mean_return_per_trade']:.6f}"
+                )
+        else:
+            significant_indices = monte_carlo_summary.get(
+                "significant_param_indices", []
             )
+            top_n = [top_n[idx] for idx in significant_indices]
+            if top_n:
+                print(
+                    f"   Monte Carlo passed {len(top_n)} / {len(monte_carlo_summary['param_results'])} "
+                    "selected parameter sets."
+                )
+            else:
+                print("   Monte Carlo passed 0 selected parameter sets.")
+
         if not monte_carlo_summary["is_significant"]:
             print(
                 "   ⏭️  Skipping validation for this iteration: "
@@ -522,6 +711,9 @@ def run_iteration(
             selected_params=top_n,
             validation_metrics=metrics,
             validation_trades=int(metrics.get("total_trades", 0)),
+            monte_carlo_enabled=bool(enable_monte_carlo),
+            monte_carlo_method=monte_carlo_method if enable_monte_carlo else None,
+            monte_carlo_p_value=monte_carlo_p_value,
         ),
         validation_end,
     )
@@ -566,13 +758,19 @@ def print_iteration_validation_summary(
     )
     pnl_rupees = final_balance - initial_balance
     win_rate_pct = float(summary.validation_metrics.get("win_rate", 0.0)) * 100.0
+    mc_p_value_text = (
+        f"{summary.monte_carlo_p_value:.4f}"
+        if summary.monte_carlo_enabled and summary.monte_carlo_p_value is not None
+        else "-"
+    )
 
     print(
         f"📌 Validation Summary (Iteration {summary.iteration}) | "
         f"{summary.validation_start} -> {summary.validation_end} | "
         f"Trades={total_trades} | "
         f"PnL={pnl_pct:.2f}% (₹{pnl_rupees:+.2f}) | "
-        f"Win Rate={win_rate_pct:.2f}%"
+        f"Win Rate={win_rate_pct:.2f}% | "
+        f"MC p-value={mc_p_value_text}"
     )
 
 
@@ -580,8 +778,12 @@ def print_final_validation_summary(
     iterations: List[IterationSummary], initial_balance: float
 ) -> None:
     print("\n📋 FINAL VALIDATION SUMMARY")
-    print("Iter | Date Range               | Trades | PnL%    | PnL ₹       | Win Rate")
-    print("-----+--------------------------+--------+---------+-------------+---------")
+    print(
+        "Iter | Date Range               | Trades | PnL%    | PnL ₹       | Win Rate | MC p-value"
+    )
+    print(
+        "-----+--------------------------+--------+---------+-------------+----------+-----------"
+    )
 
     total_trades = 0
     total_pnl_rupees = 0.0
@@ -595,6 +797,11 @@ def print_final_validation_summary(
         )
         pnl_rupees = final_balance - initial_balance
         win_rate_pct = float(item.validation_metrics.get("win_rate", 0.0)) * 100.0
+        mc_p_value_text = (
+            f"{item.monte_carlo_p_value:.4f}"
+            if item.monte_carlo_enabled and item.monte_carlo_p_value is not None
+            else "-"
+        )
 
         total_trades += trades
         total_pnl_rupees += pnl_rupees
@@ -604,17 +811,19 @@ def print_final_validation_summary(
         print(
             f"{item.iteration:>4} | {date_range:<24} | "
             f"{trades:>6} | {pnl_pct:>6.2f}% | "
-            f"₹{pnl_rupees:>+10.2f} | {win_rate_pct:>6.2f}%"
+            f"₹{pnl_rupees:>+10.2f} | {win_rate_pct:>7.2f}% | {mc_p_value_text:>9}"
         )
 
     avg_win_rate_weighted = (
         weighted_win_numerator / total_trades if total_trades > 0 else 0.0
     )
-    print("-----+--------------------------+--------+---------+-------------+---------")
+    print(
+        "-----+--------------------------+--------+---------+-------------+----------+-----------"
+    )
     print(
         f"TOTAL| {'ALL ITERATIONS':<24} | "
         f"{total_trades:>6} | {'-':>6}   | "
-        f"₹{total_pnl_rupees:>+10.2f} | {avg_win_rate_weighted:>6.2f}%"
+        f"₹{total_pnl_rupees:>+10.2f} | {avg_win_rate_weighted:>7.2f}% | {'-':>9}"
     )
 
 
@@ -686,6 +895,7 @@ def main() -> None:
             monte_carlo_short_step=args.monte_carlo_short_step,
             monte_carlo_long_step=args.monte_carlo_long_step,
             monte_carlo_rr_step=args.monte_carlo_rr_step,
+            monte_carlo_method=args.monte_carlo_method,
         )
         if iteration_summary is not None:
             iterations.append(iteration_summary)
@@ -731,6 +941,9 @@ def main() -> None:
                 "validation_max_drawdown": item.validation_metrics.get(
                     "max_drawdown", 0.0
                 ),
+                "monte_carlo_enabled": item.monte_carlo_enabled,
+                "monte_carlo_method": item.monte_carlo_method,
+                "monte_carlo_p_value": item.monte_carlo_p_value,
                 "selected_params": json.dumps(item.selected_params),
             }
         )
@@ -759,6 +972,7 @@ def main() -> None:
             "monte_carlo_short_step": args.monte_carlo_short_step,
             "monte_carlo_long_step": args.monte_carlo_long_step,
             "monte_carlo_rr_step": args.monte_carlo_rr_step,
+            "monte_carlo_method": args.monte_carlo_method,
         },
         "combined_metrics": build_combined_summary(iterations, args.initial_balance),
         "iterations": [asdict(i) for i in iterations],
