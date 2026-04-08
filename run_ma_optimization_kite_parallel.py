@@ -7,6 +7,7 @@ combinations in parallel.
 
 import pandas as pd
 import numpy as np
+import math
 from datetime import datetime, timedelta
 import os
 import sys
@@ -42,6 +43,11 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from ma_3d_optimization_visualizer import MAOptimization3DVisualizer
 from strategies import MovingAverageCrossover
+
+try:
+    from scipy import stats as scipy_stats
+except Exception:
+    scipy_stats = None
 
 # ============================================================================
 # GLOBAL CONFIGURATION - Edit these values to set defaults
@@ -116,8 +122,12 @@ def evaluate_ma_combo_worker(args):
                 "win_rate": -999,
                 "total_pnl": -999,
                 "total_trades": 0,
+                "mean_return_per_trade": 0.0,
                 "max_drawdown": -999,
                 "geometric_mean_return": -999,
+                "standard_error_mean_trade": np.nan,
+                "t_stat_mean_trade": np.nan,
+                "t_test_p_value": np.nan,
             }
 
         # Create strategy instance
@@ -133,6 +143,37 @@ def evaluate_ma_combo_worker(args):
 
         # Get strategy metrics
         metrics = strategy.get_strategy_metrics()
+        closed_trade_returns = [
+            float(t.pnl) for t in strategy.trades if getattr(t, "status", "") != "open"
+        ]
+        total_trades = int(metrics.get("total_trades", 0))
+        mean_return_per_trade = (
+            float(metrics.get("total_pnl", 0.0)) / total_trades
+            if total_trades > 0
+            else 0.0
+        )
+        standard_error_mean_trade = np.nan
+        t_stat_mean_trade = np.nan
+        t_test_p_value = np.nan
+        if total_trades >= 30 and len(closed_trade_returns) >= 2:
+            sample_std = float(np.std(closed_trade_returns, ddof=1))
+            standard_error_mean_trade = sample_std / np.sqrt(total_trades)
+            if standard_error_mean_trade > 0:
+                t_stat_mean_trade = mean_return_per_trade / standard_error_mean_trade
+                if scipy_stats is not None:
+                    t_test_p_value = float(
+                        2.0
+                        * (
+                            1.0
+                            - scipy_stats.t.cdf(
+                                abs(t_stat_mean_trade), df=total_trades - 1
+                            )
+                        )
+                    )
+                else:
+                    t_test_p_value = float(
+                        math.erfc(abs(t_stat_mean_trade) / math.sqrt(2.0))
+                    )
 
         # Calculate composite score (same as in MAOptimization3DVisualizer)
         sharpe_ratio = metrics.get("sharpe_ratio", 0)
@@ -178,9 +219,13 @@ def evaluate_ma_combo_worker(args):
             "profit_factor": profit_factor,
             "win_rate": win_rate,
             "total_pnl": metrics.get("total_pnl", 0),
-            "total_trades": metrics.get("total_trades", 0),
+            "total_trades": total_trades,
+            "mean_return_per_trade": mean_return_per_trade,
             "max_drawdown": max_drawdown,
             "geometric_mean_return": geometric_mean_return,
+            "standard_error_mean_trade": standard_error_mean_trade,
+            "t_stat_mean_trade": t_stat_mean_trade,
+            "t_test_p_value": t_test_p_value,
         }
 
     except Exception as e:
@@ -195,8 +240,12 @@ def evaluate_ma_combo_worker(args):
             "win_rate": -999,
             "total_pnl": -999,
             "total_trades": 0,
+            "mean_return_per_trade": 0.0,
             "max_drawdown": -999,
             "geometric_mean_return": -999,
+            "standard_error_mean_trade": np.nan,
+            "t_stat_mean_trade": np.nan,
+            "t_test_p_value": np.nan,
         }
 
 
@@ -313,8 +362,12 @@ def run_parallel_optimization_grid(
             "sharpe_ratio": [],
             "total_pnl": [],
             "total_trades": [],
+            "mean_return_per_trade": [],
             "win_rate": [],
             "max_drawdown": [],
+            "standard_error_mean_trade": [],
+            "t_stat_mean_trade": [],
+            "t_test_p_value": [],
         }
 
         # Filter results for this risk_reward_ratio
@@ -330,8 +383,18 @@ def run_parallel_optimization_grid(
             rr_results["sharpe_ratio"].append(r["sharpe_ratio"])
             rr_results["total_pnl"].append(r["total_pnl"])
             rr_results["total_trades"].append(r["total_trades"])
+            rr_results["mean_return_per_trade"].append(
+                r.get("mean_return_per_trade", 0.0)
+            )
             rr_results["win_rate"].append(r["win_rate"])
             rr_results["max_drawdown"].append(r["max_drawdown"])
+            rr_results["standard_error_mean_trade"].append(
+                r.get("standard_error_mean_trade", np.nan)
+            )
+            rr_results["t_stat_mean_trade"].append(
+                r.get("t_stat_mean_trade", np.nan)
+            )
+            rr_results["t_test_p_value"].append(r.get("t_test_p_value", np.nan))
 
         results[rr] = rr_results
 

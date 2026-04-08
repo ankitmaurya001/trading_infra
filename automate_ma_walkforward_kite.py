@@ -61,15 +61,15 @@ RISK_REWARD_RATIOS = [5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]
 # RISK_REWARD_RATIOS = [5.0, 6.0]
 
 # Global defaults for CLI-required runtime fields
-DEFAULT_SYMBOL = "NATGASMINI26MARFUT"
+DEFAULT_SYMBOL = "NATGASMINI26MAYFUT"
 # DEFAULT_SYMBOL = "CRUDEOILM26MARFUT"
 DEFAULT_EXCHANGE = "MCX"
-DEFAULT_START_DATE = (date.today() - timedelta(days=130)).strftime("%Y-%m-%d")
+DEFAULT_START_DATE = (date.today() - timedelta(days=61)).strftime("%Y-%m-%d")
 DEFAULT_OPTIMIZATION_DAYS = 60
 DEFAULT_VALIDATION_DAYS = 30
 DEFAULT_MAX_CONSECUTIVE_LOSSES = 5
 TOP_N = 1
-MINIMUM_TRADES_REQUIRED = 5
+MINIMUM_TRADES_REQUIRED = 30
 ENABLE_MONTE_CARLO_SIGNIFICANCE = True
 MONTE_CARLO_PERMUTATIONS = 500
 MONTE_CARLO_P_VALUE_THRESHOLD = 0.2
@@ -79,6 +79,9 @@ MONTE_CARLO_SHORT_STEP = 5
 MONTE_CARLO_LONG_STEP = 5
 MONTE_CARLO_RR_STEP = 3
 MONTE_CARLO_METHOD = "param_significance_v2"
+ENABLE_PARAMETER_PLATEAU_CHECK = True
+PLATEAU_SHORT_RANGE = 10
+PLATEAU_LONG_RANGE = 20
 
 
 @dataclass
@@ -104,12 +107,18 @@ def _format_pct(value: float) -> str:
     return f"{value * 100.0:.2f}%"
 
 
+def _format_float(value: float, digits: int = 6) -> str:
+    if pd.isna(value):
+        return "N/A"
+    return f"{float(value):.{digits}f}"
+
+
 def _build_optimization_chart_snippet(top_n_params: List[Dict]) -> str:
     """Create an optimization summary suitable for chart subtitles."""
     snippets = []
     for idx, row in enumerate(top_n_params, start=1):
         snippets.append(
-            "#{} SW{}-LW{} RR{} Score={:.3f} Trades={} WR={} PnL={} DD={}".format(
+            "#{} SW{}-LW{} RR{} Score={:.3f} Trades={} WR={} PnL={} DD={} Mean={} SEM={} t={} p={}".format(
                 idx,
                 row.get("short_window", "-"),
                 row.get("long_window", "-"),
@@ -119,6 +128,12 @@ def _build_optimization_chart_snippet(top_n_params: List[Dict]) -> str:
                 _format_pct(float(row.get("win_rate", 0.0))),
                 _format_pct(float(row.get("total_pnl", 0.0))),
                 _format_pct(float(row.get("max_drawdown", 0.0))),
+                _format_float(float(row.get("mean_return_per_trade", 0.0)), 6),
+                _format_float(
+                    float(row.get("standard_error_mean_trade", float("nan"))), 6
+                ),
+                _format_float(float(row.get("t_stat_mean_trade", float("nan"))), 3),
+                _format_float(float(row.get("t_test_p_value", float("nan"))), 4),
             )
         )
     return "<br>".join(snippets)
@@ -228,9 +243,12 @@ def print_optimization_summary(
         "   Note: Unique (short,long) MA pairs only; highest RR kept per pair; "
         f"min trades filter >= {min_trades_required}."
     )
-    print("Rank | Short | Long | RR  | Trades | Score   | Win Rate | PnL      | Max DD")
+    print("   t-test fields require 30+ trades (else N/A).")
     print(
-        "-----+-------+------+-----+--------+---------+----------+----------+--------"
+        "Rank | Short | Long | RR  | Trades | Score   | Mean/Trd | StdErr  | t-stat | p-val  | Win Rate | PnL      | Max DD"
+    )
+    print(
+        "-----+-------+------+-----+--------+---------+----------+---------+--------+--------+----------+----------+--------"
     )
 
     pnl_values: List[float] = []
@@ -244,13 +262,17 @@ def print_optimization_summary(
             f"{float(row.get('risk_reward_ratio', 0.0)):>3.1f} | "
             f"{int(row.get('total_trades', 0)):>6} | "
             f"{float(row.get('score', 0.0)):>7.3f} | "
+            f"{_format_float(float(row.get('mean_return_per_trade', 0.0)), 6):>8} | "
+            f"{_format_float(float(row.get('standard_error_mean_trade', float('nan'))), 6):>7} | "
+            f"{_format_float(float(row.get('t_stat_mean_trade', float('nan'))), 3):>6} | "
+            f"{_format_float(float(row.get('t_test_p_value', float('nan'))), 4):>6} | "
             f"{_format_pct(float(row.get('win_rate', 0.0))):>8} | "
             f"{_format_pct(pnl):>8} | "
             f"{_format_pct(float(row.get('max_drawdown', 0.0))):>6}"
         )
 
     print(
-        "-----+-------+------+-----+--------+---------+----------+----------+--------"
+        "-----+-------+------+-----+--------+---------+----------+---------+--------+--------+----------+----------+--------"
     )
     print(
         "Top-N PnL Range: {} to {}".format(
@@ -258,6 +280,137 @@ def print_optimization_summary(
             _format_pct(max(pnl_values)) if pnl_values else "0.00%",
         )
     )
+
+
+def _extract_rr_grid_points(
+    results: Dict, rr: float, min_trades_required: int
+) -> pd.DataFrame:
+    rr_rows = results.get(rr, {})
+    if not rr_rows:
+        return pd.DataFrame()
+
+    frame = pd.DataFrame(
+        {
+            "short_window": rr_rows.get("short_windows", []),
+            "long_window": rr_rows.get("long_windows", []),
+            "composite_score": rr_rows.get("composite_score", []),
+            "total_trades": rr_rows.get("total_trades", []),
+            "mean_return_per_trade": rr_rows.get("mean_return_per_trade", []),
+            "standard_error_mean_trade": rr_rows.get("standard_error_mean_trade", []),
+            "t_stat_mean_trade": rr_rows.get("t_stat_mean_trade", []),
+            "t_test_p_value": rr_rows.get("t_test_p_value", []),
+        }
+    )
+    if frame.empty:
+        return frame
+    frame.loc[frame["total_trades"] < min_trades_required, "composite_score"] = 0.0
+    return frame[
+        (frame["composite_score"] > -900)
+        & (frame["short_window"] < frame["long_window"])
+    ]
+
+
+def run_parameter_plateau_check(
+    optimization_data: pd.DataFrame,
+    selected_params: List[Dict],
+    short_range: int,
+    long_range: int,
+    min_trades_required: int,
+    max_workers: int,
+    output_dir: Path,
+) -> List[Path]:
+    """Rerun local optimization neighborhoods around selected params and create 3D plateau plots."""
+    plot_paths: List[Path] = []
+    for idx, param in enumerate(selected_params, start=1):
+        short_center = int(param["short_window"])
+        long_center = int(param["long_window"])
+        rr = float(param["risk_reward_ratio"])
+
+        short_candidates = list(
+            range(max(2, short_center - short_range), short_center + short_range + 1)
+        )
+        long_candidates = list(
+            range(max(3, long_center - long_range), long_center + long_range + 1)
+        )
+
+        neighborhood_results = run_parallel_optimization_grid(
+            data=optimization_data,
+            short_window_range=short_candidates,
+            long_window_range=long_candidates,
+            risk_reward_ratios=[rr],
+            trading_fee=0.0,
+            max_workers=max_workers,
+        )
+        neighborhood_frame = _extract_rr_grid_points(
+            neighborhood_results, rr, min_trades_required
+        )
+        if neighborhood_frame.empty:
+            continue
+
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter3d(
+                x=neighborhood_frame["short_window"],
+                y=neighborhood_frame["long_window"],
+                z=neighborhood_frame["composite_score"],
+                mode="markers",
+                marker={
+                    "size": 5,
+                    "color": neighborhood_frame["composite_score"],
+                    "colorscale": "Viridis",
+                    "colorbar": {"title": "Composite"},
+                    "opacity": 0.9,
+                },
+                customdata=neighborhood_frame[
+                    [
+                        "total_trades",
+                        "mean_return_per_trade",
+                        "standard_error_mean_trade",
+                        "t_stat_mean_trade",
+                        "t_test_p_value",
+                    ]
+                ].to_numpy(),
+                name="Neighborhood grid",
+                hovertemplate=(
+                    "Short=%{x}<br>Long=%{y}<br>Composite=%{z:.4f}<br>"
+                    "Trades=%{customdata[0]}<br>"
+                    "Mean/Trade=%{customdata[1]:.6f}<br>"
+                    "StdErr=%{customdata[2]:.6f}<br>"
+                    "t-stat=%{customdata[3]:.3f}<br>"
+                    "p-val=%{customdata[4]:.4f}<br>"
+                    "<extra></extra>"
+                ),
+            )
+        )
+        fig.add_trace(
+            go.Scatter3d(
+                x=[short_center],
+                y=[long_center],
+                z=[float(param.get("score", 0.0))],
+                mode="markers",
+                marker={"size": 9, "symbol": "diamond", "color": "#D7263D"},
+                name="Selected Top-N point",
+            )
+        )
+        fig.update_layout(
+            title=(
+                f"Parameter Plateau Check #{idx} | RR={rr:.2f} | "
+                f"Short[{short_center-short_range}, {short_center+short_range}] "
+                f"Long[{long_center-long_range}, {long_center+long_range}]"
+            ),
+            scene={
+                "xaxis_title": "Short MA",
+                "yaxis_title": "Long MA",
+                "zaxis_title": "Composite Score",
+            },
+            template="plotly_white",
+        )
+
+        output_path = output_dir / f"parameter_plateau_top_{idx}.html"
+        fig.write_html(str(output_path))
+        plot_paths.append(output_path)
+
+    return plot_paths
 
 
 def parse_args() -> argparse.Namespace:
@@ -336,6 +489,24 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--enable-parameter-plateau-check",
+        action=argparse.BooleanOptionalAction,
+        default=ENABLE_PARAMETER_PLATEAU_CHECK,
+        help="Rerun local neighborhoods around selected Top-N params and generate 3D plateau plots.",
+    )
+    parser.add_argument(
+        "--plateau-short-range",
+        type=int,
+        default=PLATEAU_SHORT_RANGE,
+        help="For plateau checks, evaluate short MA in [short_ma-range, short_ma+range].",
+    )
+    parser.add_argument(
+        "--plateau-long-range",
+        type=int,
+        default=PLATEAU_LONG_RANGE,
+        help="For plateau checks, evaluate long MA in [long_ma-range, long_ma+range].",
+    )
+    parser.add_argument(
         "--monte-carlo-short-step",
         type=int,
         default=MONTE_CARLO_SHORT_STEP,
@@ -397,6 +568,9 @@ def run_iteration(
     monte_carlo_long_step: int,
     monte_carlo_rr_step: int,
     monte_carlo_method: str,
+    enable_parameter_plateau_check: bool,
+    plateau_short_range: int,
+    plateau_long_range: int,
 ) -> Tuple[Optional[IterationSummary], date]:
     iter_dir = out_dir / f"iteration_{iteration:03d}"
     iter_dir.mkdir(parents=True, exist_ok=True)
@@ -451,6 +625,27 @@ def run_iteration(
         top_n_params=top_n,
         min_trades_required=MINIMUM_TRADES_REQUIRED,
     )
+
+    if enable_parameter_plateau_check:
+        print(
+            "🛰️ Running parameter plateau check "
+            f"(short_range=±{plateau_short_range}, long_range=±{plateau_long_range})..."
+        )
+        plateau_paths = run_parameter_plateau_check(
+            optimization_data=optimization_data,
+            selected_params=top_n,
+            short_range=plateau_short_range,
+            long_range=plateau_long_range,
+            min_trades_required=MINIMUM_TRADES_REQUIRED,
+            max_workers=max_workers,
+            output_dir=iter_dir,
+        )
+        if plateau_paths:
+            for path in plateau_paths:
+                print(f"   Parameter plateau chart: {path}")
+                webbrowser.open(f"file://{path.resolve()}")
+        else:
+            print("   No plateau charts generated (empty neighborhood results).")
 
     monte_carlo_p_value: Optional[float] = None
 
@@ -896,6 +1091,9 @@ def main() -> None:
             monte_carlo_long_step=args.monte_carlo_long_step,
             monte_carlo_rr_step=args.monte_carlo_rr_step,
             monte_carlo_method=args.monte_carlo_method,
+            enable_parameter_plateau_check=args.enable_parameter_plateau_check,
+            plateau_short_range=args.plateau_short_range,
+            plateau_long_range=args.plateau_long_range,
         )
         if iteration_summary is not None:
             iterations.append(iteration_summary)

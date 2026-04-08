@@ -37,6 +37,30 @@ def _build_best_by_rr_rows(results: dict, metric: str = "composite_score") -> li
         if not data.get(metric):
             continue
         best_idx = int(np.argmax(data[metric]))
+        sem_values = data.get("standard_error_mean_trade", [])
+        t_stat_values = data.get("t_stat_mean_trade", [])
+        p_values = data.get("t_test_p_value", [])
+        mean_values = data.get("mean_return_per_trade", [])
+        sem_value = (
+            float(sem_values[best_idx])
+            if sem_values and best_idx < len(sem_values)
+            else float("nan")
+        )
+        t_stat_value = (
+            float(t_stat_values[best_idx])
+            if t_stat_values and best_idx < len(t_stat_values)
+            else float("nan")
+        )
+        p_value = (
+            float(p_values[best_idx])
+            if p_values and best_idx < len(p_values)
+            else float("nan")
+        )
+        mean_value = (
+            float(mean_values[best_idx])
+            if mean_values and best_idx < len(mean_values)
+            else 0.0
+        )
         rows.append(
             {
                 "risk_reward_ratio": rr,
@@ -46,8 +70,12 @@ def _build_best_by_rr_rows(results: dict, metric: str = "composite_score") -> li
                 "total_pnl": float(data["total_pnl"][best_idx]),
                 "sharpe_ratio": float(data["sharpe_ratio"][best_idx]),
                 "total_trades": int(data["total_trades"][best_idx]),
+                "mean_return_per_trade": mean_value,
                 "win_rate": float(data["win_rate"][best_idx]),
                 "max_drawdown": float(data["max_drawdown"][best_idx]),
+                "standard_error_mean_trade": sem_value,
+                "t_stat_mean_trade": t_stat_value,
+                "t_test_p_value": p_value,
             }
         )
     return sorted(rows, key=lambda r: r["risk_reward_ratio"])
@@ -233,11 +261,18 @@ def main() -> None:
         return
 
     for idx, row in enumerate(top_params, start=1):
+        sem_value = row.get("standard_error_mean_trade", float("nan"))
+        sem_text = "N/A" if np.isnan(sem_value) else f"{sem_value:.6f}"
+        t_stat_value = row.get("t_stat_mean_trade", float("nan"))
+        p_value = row.get("t_test_p_value", float("nan"))
+        t_stat_text = "N/A" if np.isnan(t_stat_value) else f"{t_stat_value:.3f}"
+        p_value_text = "N/A" if np.isnan(p_value) else f"{p_value:.4f}"
         print(
             f"{idx}. Short={row['short_window']:>2}, Long={row['long_window']:>3} | "
             f"RR={row['risk_reward_ratio']:>3.1f} | Score={row['score']:>8.2f} | "
             f"PnL={row['total_pnl']:>8.2%} | Sharpe={row['sharpe_ratio']:>7.4f} | "
-            f"Trades={row['total_trades']}"
+            f"Trades={row['total_trades']} | StdErr={sem_text} | "
+            f"t={t_stat_text} | p={p_value_text}"
         )
 
 

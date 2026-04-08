@@ -842,43 +842,42 @@ class TradingEngine:
         trades_executed = []
         action_taken = None
         
+        has_active_trade = len(self.active_trades) > 0
+
+        # Once a trade is open, ignore all strategy signals and let TP/SL manage the exit.
+        if has_active_trade and latest_signal in (
+            Signal.LONG_ENTRY.value,
+            Signal.SHORT_ENTRY.value,
+            Signal.LONG_EXIT.value,
+            Signal.SHORT_EXIT.value,
+        ):
+            print(
+                f"⚠️  [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] "
+                f"{strategy.name} - {signal_name} signal IGNORED "
+                f"(active trade managed by TP/SL)"
+            )
         # Check for entry signals (only if no active trades exist and sufficient balance)
-        if latest_signal == Signal.LONG_ENTRY.value and self.current_balance > 0 and len(self.active_trades) == 0:  # Long entry
+        elif latest_signal == Signal.LONG_ENTRY.value and self.current_balance > 0 and not has_active_trade:  # Long entry
             print(f"🟢 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - LONG ENTRY signal detected")
             trade = self.execute_trade(strategy, 'BUY', current_price, current_time, data)
             trades_executed.append(trade)
             action_taken = 'LONG_ENTRY'
-        elif latest_signal == Signal.SHORT_ENTRY.value and self.current_balance > 0 and len(self.active_trades) == 0:  # Short entry
+        elif latest_signal == Signal.SHORT_ENTRY.value and self.current_balance > 0 and not has_active_trade:  # Short entry
             print(f"🔴 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - SHORT ENTRY signal detected")
             trade = self.execute_trade(strategy, 'SELL', current_price, current_time, data)
             trades_executed.append(trade)
             action_taken = 'SHORT_ENTRY'
-        elif (latest_signal == Signal.LONG_ENTRY.value or latest_signal == Signal.SHORT_ENTRY.value) and len(self.active_trades) > 0:
-            # Signal ignored because active trade exists
-            signal_type = "LONG ENTRY" if latest_signal == Signal.LONG_ENTRY.value else "SHORT ENTRY"
-            print(f"⚠️  [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - {signal_type} signal IGNORED (active trade exists)")
         elif (latest_signal == Signal.LONG_ENTRY.value or latest_signal == Signal.SHORT_ENTRY.value) and self.current_balance <= 0:
             # Signal ignored because insufficient balance
             signal_type = "LONG ENTRY" if latest_signal == Signal.LONG_ENTRY.value else "SHORT ENTRY"
             print(f"⚠️  [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - {signal_type} signal IGNORED (insufficient balance: ${self.current_balance:.2f})")
         
-        # Check for exit signals
-        if latest_signal == Signal.LONG_EXIT.value:  # Long exit
-            if len(self.active_trades) > 0:
-                print(f"🟢 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - LONG EXIT signal detected")
-                closed_trades = self.close_trades(strategy, 'LONG', current_price, current_time)
-                trades_executed.extend(closed_trades)
-                action_taken = 'LONG_EXIT'
-            else:
-                print(f"⚠️  [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - LONG EXIT signal IGNORED (no active trades)")
-        elif latest_signal == Signal.SHORT_EXIT.value:  # Short exit
-            if len(self.active_trades) > 0:
-                print(f"🔴 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - SHORT EXIT signal detected")
-                closed_trades = self.close_trades(strategy, 'SHORT', current_price, current_time)
-                trades_executed.extend(closed_trades)
-                action_taken = 'SHORT_EXIT'
-            else:
-                print(f"⚠️  [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - SHORT EXIT signal IGNORED (no active trades)")
+        # Exit signals are only informational when there is no open trade because
+        # active positions are managed exclusively by TP/SL once entered.
+        if latest_signal == Signal.LONG_EXIT.value and not has_active_trade:
+            print(f"⚠️  [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - LONG EXIT signal IGNORED (no active trades)")
+        elif latest_signal == Signal.SHORT_EXIT.value and not has_active_trade:
+            print(f"⚠️  [{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - SHORT EXIT signal IGNORED (no active trades)")
         
         return {
             'signal': latest_signal,
