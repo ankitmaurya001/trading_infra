@@ -57,6 +57,10 @@ class KiteTradingEngine:
         # Place this file in the project root to enable weekend trading
         self.weekend_trading_flag_file = "allow_weekend_trading.flag"
         
+        # Commodity trading configuration
+        commodity_config = self.config.get('commodity_trading', {})
+        self.market_protection = commodity_config.get('market_protection', -1)
+
         # Initialize data fetcher and authenticate first (needed for margin check)
         self.data_fetcher = KiteDataFetcher(
             cfg.KITE_CREDENTIALS, 
@@ -71,7 +75,8 @@ class KiteTradingEngine:
         # Initialize Kite Commodity Broker (self.exchange is now defined)
         self.broker = KiteCommodityBroker(
             kite=self.data_fetcher.kite,
-            exchange=self.exchange
+            exchange=self.exchange,
+            market_protection=self.market_protection,
         )
         
         # Fetch actual available margin from Kite
@@ -118,7 +123,6 @@ class KiteTradingEngine:
         self.trading_engine.symbol = self.symbol  # self.symbol is now defined
         
         # Commodity trading configuration
-        commodity_config = self.config.get('commodity_trading', {})
         self.margin_buffer_percent = commodity_config.get('margin_buffer_percent', 20)
         self.margin_check_interval = commodity_config.get('margin_check_interval_seconds', 300)
         self.margin_alert_threshold = commodity_config.get('margin_alert_threshold_percent', 150)
