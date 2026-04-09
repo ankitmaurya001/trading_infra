@@ -38,6 +38,7 @@
     "log_folder": "logs",
     "commodity_trading": {
         "lot_size": null,
+        "market_protection": -1,
         "enable_margin_monitoring": false,
         "margin_buffer_percent": 20,
         "margin_check_interval_seconds": 300,

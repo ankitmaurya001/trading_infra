@@ -17,16 +17,25 @@ class KiteCommodityBroker:
     Handles lot-based positions, margin management, and GTT orders.
     """
     
-    def __init__(self, kite: KiteConnect, exchange: str = "MCX"):
+    def __init__(
+        self,
+        kite: KiteConnect,
+        exchange: str = "MCX",
+        market_protection: Optional[int] = -1,
+    ):
         """
         Initialize Kite Commodity Broker.
         
         Args:
             kite: Authenticated KiteConnect instance
             exchange: Exchange name (default: MCX)
+            market_protection: Market protection for MARKET/SL-M orders.
+                Use -1 for broker-managed automatic protection, or 0-100
+                for explicit percentage. Set to None to omit.
         """
         self.kite = kite
         self.exchange = exchange
+        self.market_protection = market_protection
         self.instruments_cache = {}
         self.lot_sizes_cache = {}
         
@@ -404,6 +413,7 @@ class KiteCommodityBroker:
         quantity: float = 1,
         price: Optional[float] = None,
         time_in_force: Optional[str] = None,
+        market_protection: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Place an order on Kite Connect.
@@ -415,6 +425,7 @@ class KiteCommodityBroker:
             quantity: Number of lots (default: 1)
             price: Price for limit orders
             time_in_force: Time in force (not used for Kite, but kept for interface compatibility)
+            market_protection: Optional override for market protection.
             
         Returns:
             Order response dictionary with order_id
@@ -456,6 +467,13 @@ class KiteCommodityBroker:
                 if price is None:
                     raise ValueError(f"Price required for {order_type} order")
                 order_params['price'] = float(price)
+
+            # Add market protection for MARKET/SL-M orders.
+            # Some brokers reject market orders without this.
+            if kite_order_type in [self.kite.ORDER_TYPE_MARKET, self.kite.ORDER_TYPE_SLM]:
+                mp_value = self.market_protection if market_protection is None else market_protection
+                if mp_value is not None:
+                    order_params['market_protection'] = int(mp_value)
             
             # Place the order
             order_id = self.kite.place_order(**order_params)
@@ -683,4 +701,3 @@ class KiteCommodityBroker:
         except Exception as e:
             logger.error(f"Error getting symbol filters for {symbol}: {e}")
             return {}
-
