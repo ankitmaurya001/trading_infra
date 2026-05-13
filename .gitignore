@@ -3,3 +3,15 @@ access_token.txt
 __pycache__/
 *.pyc
 .env
+logs/*
+data/*
+ma_mock_results/*
+ma_mock_results_ctrader/*
+ma_mock_results_kite/*
+ma_optimization_plots/*
+ma_optimization_plots_ctrader/*
+ma_optimization_plots_kite/*
+ma_walkforward_results_kite/*
+validation_results/*
+*.csv
+

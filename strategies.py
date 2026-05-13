@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from enum import Enum
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import List, Dict, Iterable
 
 # Constants for numerical stability
 EPSILON = 1e-8  # Small value to prevent division by zero
@@ -630,6 +630,44 @@ class MovingAverageCrossover(BaseStrategy):
         self.short_window = short_window
         self.long_window = long_window
     
+    def precompute_indicators(self, data: pd.DataFrame, windows: Iterable[int]) -> Dict[str, object]:
+        """
+        Precompute reusable indicators for moving-average optimization.
+
+        ATR depends only on the input OHLC data and ``atr_period`` while each SMA
+        depends only on the close prices and its window. Optimization runs can
+        therefore calculate these once and pass the cached series into
+        ``generate_signals_from_precomputed`` for each parameter combination.
+        """
+        unique_windows = sorted({int(window) for window in windows if int(window) > 0})
+        return {
+            'ATR': self.calculate_atr(data),
+            'SMA': {
+                window: data['Close'].rolling(window=window).mean()
+                for window in unique_windows
+            }
+        }
+
+    def generate_signals_from_precomputed(
+        self,
+        data: pd.DataFrame,
+        sma_short: pd.Series,
+        sma_long: pd.Series,
+        atr: pd.Series
+    ) -> pd.DataFrame:
+        """
+        Generate signals using externally precomputed SMA and ATR series.
+
+        This preserves the public ``generate_signals`` output while allowing
+        optimizers to avoid recalculating unchanged rolling indicators on every
+        parameter combination.
+        """
+        df = data.copy()
+        df['SMA_short'] = sma_short.reindex(df.index)
+        df['SMA_long'] = sma_long.reindex(df.index)
+        df['ATR'] = atr.reindex(df.index)
+        return self._generate_signals_from_indicator_frame(df)
+
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Generate signals based on moving average crossover
@@ -640,15 +678,16 @@ class MovingAverageCrossover(BaseStrategy):
         Returns:
             pd.DataFrame: Data with signals added
         """
-        df = data.copy()
-        
-        # Calculate moving averages
-        df['SMA_short'] = df['Close'].rolling(window=self.short_window).mean()
-        df['SMA_long'] = df['Close'].rolling(window=self.long_window).mean()
-        
-        # Calculate ATR
-        df['ATR'] = self.calculate_atr(df)
-        
+        indicator_cache = self.precompute_indicators(data, [self.short_window, self.long_window])
+        return self.generate_signals_from_precomputed(
+            data,
+            indicator_cache['SMA'][self.short_window],
+            indicator_cache['SMA'][self.long_window],
+            indicator_cache['ATR']
+        )
+
+    def _generate_signals_from_indicator_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Run the row-by-row trade simulation on a DataFrame with indicators."""
         # Generate signals
         df['Signal'] = Signal.HOLD.value
         df['Position'] = 0

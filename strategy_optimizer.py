@@ -47,6 +47,7 @@ class StrategyOptimizer:
         self.sharpe_threshold = sharpe_threshold
         self.results = []
         self.failed_runs = []  # Track failed configurations for debugging
+        self._ma_indicator_cache = None
         
     def calculate_composite_score(self, metrics: Dict[str, float]) -> float:
         """
@@ -147,6 +148,56 @@ class StrategyOptimizer:
         strategy.current_position = PositionType.NONE
         strategy.signals = None
     
+    def _ensure_ma_indicator_cache(self) -> None:
+        """Initialize reusable MovingAverageCrossover indicator cache."""
+        if self.strategy_class != MovingAverageCrossover or self._ma_indicator_cache is not None:
+            return
+
+        windows = []
+        for param_name in ('short_window', 'long_window'):
+            windows.extend(self.param_ranges.get(param_name, []))
+
+        cache_builder = MovingAverageCrossover()
+        self._ma_indicator_cache = cache_builder.precompute_indicators(self.data, windows)
+        logger.info(
+            "Precomputed MovingAverageCrossover indicators for %s unique windows.",
+            len(self._ma_indicator_cache['SMA'])
+        )
+
+    def _ensure_ma_window_cached(self, window: int) -> None:
+        """Lazily add a moving-average window to the cache if sensitivity tests need it."""
+        if self.strategy_class != MovingAverageCrossover:
+            return
+
+        self._ensure_ma_indicator_cache()
+        window = int(window)
+        if window <= 0:
+            return
+        if window not in self._ma_indicator_cache['SMA']:
+            self._ma_indicator_cache['SMA'][window] = self.data['Close'].rolling(window=window).mean()
+
+    def _run_strategy(self, params: Dict[str, Any]) -> Tuple[BaseStrategy, pd.DataFrame, Dict[str, float]]:
+        """Create a strategy, generate signals, and return metrics for one parameter set."""
+        strategy = self.strategy_class(**params)
+        self._reset_strategy_state(strategy)
+
+        if self.strategy_class == MovingAverageCrossover:
+            short_window = int(params['short_window'])
+            long_window = int(params['long_window'])
+            self._ensure_ma_window_cached(short_window)
+            self._ensure_ma_window_cached(long_window)
+            signals_df = strategy.generate_signals_from_precomputed(
+                self.data,
+                self._ma_indicator_cache['SMA'][short_window],
+                self._ma_indicator_cache['SMA'][long_window],
+                self._ma_indicator_cache['ATR']
+            )
+        else:
+            signals_df = strategy.generate_signals(self.data)
+
+        metrics = strategy.get_strategy_metrics()
+        return strategy, signals_df, metrics
+    
     def optimize(self, n_jobs: int = 1) -> Tuple[Dict[str, Any], Dict[str, float]]:
         """
         Optimize strategy parameters using grid search.
@@ -166,6 +217,7 @@ class StrategyOptimizer:
         param_combinations = list(product(*param_values))
         
         logger.info(f"Testing {len(param_combinations)} parameter combinations...")
+        self._ensure_ma_indicator_cache()
         
         best_score = -float('inf')
         best_params = None
@@ -180,15 +232,8 @@ class StrategyOptimizer:
                 continue
             
             try:
-                # Create fresh strategy instance for each test
-                strategy = self.strategy_class(**params)
-                
-                # Ensure clean state
-                self._reset_strategy_state(strategy)
-                
-                # Generate signals and get metrics
-                signals_df = strategy.generate_signals(self.data)
-                metrics = strategy.get_strategy_metrics()
+                # Generate signals and get metrics, reusing cached indicators where available
+                _, signals_df, metrics = self._run_strategy(params)
                 
                 # Validate that signals were generated
                 if signals_df is None or len(signals_df) == 0:
@@ -411,14 +456,8 @@ class StrategyOptimizer:
 
                         # Run strategy with test parameters
                         try:
-                            strategy = self.strategy_class(**test_params)
-                            self._reset_strategy_state(strategy)
-
-                            # Run backtest using generate_signals method
-                            signals_data = strategy.generate_signals(self.data)
-
-                            # Calculate metrics
-                            metrics = strategy.get_strategy_metrics()
+                            # Run backtest and reuse cached indicators where available
+                            _, signals_data, metrics = self._run_strategy(test_params)
                             score = self.calculate_composite_score(metrics)
 
                             param_scores[test_value] = score

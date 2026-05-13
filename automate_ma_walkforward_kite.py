@@ -1,3 +1,4 @@
+# python automate_ma_walkforward_kite.py --validation-stop-mode result --interval 5m
 #!/usr/bin/env python3
 """Automate walk-forward MA optimization + majority-vote validation on Kite data."""
 
@@ -18,6 +19,11 @@ from plotly.subplots import make_subplots
 
 from ma_3d_optimization_visualizer import MAOptimization3DVisualizer
 from run_ma_mock_validation_majority_kite import (
+    DEFAULT_BREAKEVEN_ACTIVATION_R,
+    DEFAULT_BREAKEVEN_BUFFER_ATR,
+    DEFAULT_ENABLE_TRAILING_STOP,
+    DEFAULT_TRAILING_ACTIVATION_R,
+    DEFAULT_TRAILING_ATR_MULTIPLIER,
     calculate_performance_metrics,
     create_cumulative_pnl_chart,
     create_ohlc_trade_chart,
@@ -29,7 +35,6 @@ from run_ma_optimization_kite_parallel import run_parallel_optimization_grid
 from run_ma_optimization_kite_parallel_top3 import select_top_n_from_best_by_rr
 from monte_carlo_significance import run_monte_carlo_permutation_test
 from monte_carlo_signigfincae_v2 import run_monte_carlo_param_significance_test_v2
-
 
 SHORT_WINDOW_RANGE = [5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80]
 LONG_WINDOW_RANGE = [
@@ -64,7 +69,10 @@ RISK_REWARD_RATIOS = [5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]
 DEFAULT_SYMBOL = "NATGASMINI26MAYFUT"
 # DEFAULT_SYMBOL = "CRUDEOILM26MARFUT"
 DEFAULT_EXCHANGE = "MCX"
-DEFAULT_START_DATE = (date.today() - timedelta(days=61)).strftime("%Y-%m-%d")
+# for getting trading params
+# DEFAULT_START_DATE = (date.today() - timedelta(days=61)).strftime("%Y-%m-%d")
+# for running siumation on old data
+DEFAULT_START_DATE = (date.today() - timedelta(days=120)).strftime("%Y-%m-%d")
 DEFAULT_OPTIMIZATION_DAYS = 60
 DEFAULT_VALIDATION_DAYS = 30
 DEFAULT_MAX_CONSECUTIVE_LOSSES = 5
@@ -310,6 +318,105 @@ def _extract_rr_grid_points(
     ]
 
 
+def create_losing_trade_mfe_report(
+    trades: pd.DataFrame, output_path: Path
+) -> pd.DataFrame:
+    """Save losing trades with their maximum favorable excursion before exit."""
+    if trades.empty or "max_favorable_pnl" not in trades.columns:
+        report = pd.DataFrame()
+        report.to_csv(output_path, index=False)
+        return report
+
+    losing_trades = trades[trades["pnl"] < 0].copy()
+    if losing_trades.empty:
+        losing_trades.to_csv(output_path, index=False)
+        return losing_trades
+
+    report_columns = [
+        "entry_time",
+        "exit_time",
+        "action",
+        "status",
+        "entry_price",
+        "exit_price",
+        "take_profit",
+        "stop_loss",
+        "pnl",
+        "pnl_rupees",
+        "max_favorable_time",
+        "max_favorable_price",
+        "max_favorable_pnl",
+        "max_favorable_pnl_rupees",
+        "profit_given_back",
+        "profit_given_back_rupees",
+    ]
+    existing_columns = [c for c in report_columns if c in losing_trades.columns]
+    report = losing_trades[existing_columns].sort_values(
+        "max_favorable_pnl", ascending=False
+    )
+    report.to_csv(output_path, index=False)
+    return report
+
+
+def _format_trade_table_float(value, precision: int = 2, prefix: str = "") -> str:
+    if pd.isna(value):
+        return "-"
+    return f"{prefix}{float(value):.{precision}f}"
+
+
+def _format_trade_table_time(value) -> str:
+    if pd.isna(value):
+        return "-"
+    ts = pd.Timestamp(value)
+    return ts.strftime("%Y-%m-%d %H:%M")
+
+
+def _format_trade_outcome(status: str) -> str:
+    if status == "tp_hit":
+        return "TP"
+    if status == "sl_hit":
+        return "SL"
+    if status == "closed_end":
+        return "END"
+    return str(status).upper() if status else "-"
+
+
+def print_validation_trade_table(trades: pd.DataFrame, iteration: int) -> None:
+    """Print a compact per-trade validation table with MFE details."""
+    if trades.empty:
+        print(f"\n📋 Validation Trade Table (Iteration {iteration}): no trades")
+        return
+
+    rows = []
+    for trade_no, (_, trade) in enumerate(trades.iterrows(), start=1):
+        mfe_pct = float(trade.get("max_favorable_pnl", 0.0)) * 100.0
+        mfe_price = trade.get("max_favorable_price")
+        mfe_rupees = float(trade.get("max_favorable_pnl_rupees", 0.0))
+        mfe_text = (
+            f"{mfe_pct:.2f}% @ {_format_trade_table_float(mfe_price)} "
+            f"(₹{mfe_rupees:+.2f})"
+        )
+        rows.append(
+            {
+                "#": trade_no,
+                "Entry Time": _format_trade_table_time(trade.get("entry_time")),
+                "Side": str(trade.get("action", "-")),
+                "Entry": _format_trade_table_float(trade.get("entry_price")),
+                "Exit": _format_trade_table_float(trade.get("exit_price")),
+                "TP": _format_trade_table_float(trade.get("take_profit")),
+                "SL": _format_trade_table_float(trade.get("stop_loss")),
+                "Hit": _format_trade_outcome(str(trade.get("status", ""))),
+                "PnL%": f"{float(trade.get('pnl', 0.0)) * 100:+.2f}%",
+                "MFE": mfe_text,
+                "PnL ₹": f"₹{float(trade.get('pnl_rupees', 0.0)):+.2f}",
+            }
+        )
+
+    table = pd.DataFrame(rows)
+    print(f"\n📋 Validation Trade Table (Iteration {iteration})")
+    print(table.to_string(index=False))
+
+
 def run_parameter_plateau_check(
     optimization_data: pd.DataFrame,
     selected_params: List[Dict],
@@ -444,6 +551,36 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--interval", default="15m")
     parser.add_argument("--initial-balance", type=float, default=10000.0)
+    parser.add_argument(
+        "--enable-trailing-stop",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_ENABLE_TRAILING_STOP,
+        help="Enable breakeven plus ATR/Chandelier trailing stop during validation.",
+    )
+    parser.add_argument(
+        "--breakeven-activation-r",
+        type=float,
+        default=DEFAULT_BREAKEVEN_ACTIVATION_R,
+        help="Move validation SL to breakeven after this many initial-risk units in profit.",
+    )
+    parser.add_argument(
+        "--breakeven-buffer-atr",
+        type=float,
+        default=DEFAULT_BREAKEVEN_BUFFER_ATR,
+        help="ATR buffer beyond entry when validation SL moves to breakeven.",
+    )
+    parser.add_argument(
+        "--trailing-activation-r",
+        type=float,
+        default=DEFAULT_TRAILING_ACTIVATION_R,
+        help="Start ATR/Chandelier trailing after this many initial-risk units in profit.",
+    )
+    parser.add_argument(
+        "--trailing-atr-multiplier",
+        type=float,
+        default=DEFAULT_TRAILING_ATR_MULTIPLIER,
+        help="ATR multiplier used for validation Chandelier trailing-stop distance.",
+    )
     parser.add_argument("--max-workers", type=int, default=None)
     parser.add_argument(
         "--enable-monte-carlo",
@@ -543,6 +680,35 @@ def _downsample_values(values: List, step: int) -> List:
     return sampled
 
 
+def _build_validation_data_with_warmup(
+    optimization_data: pd.DataFrame,
+    validation_data: pd.DataFrame,
+    selected_params: List[Dict],
+) -> pd.DataFrame:
+    """Prepend enough optimization history for validation indicators to be ready on day 1."""
+    if validation_data.empty or optimization_data.empty:
+        return validation_data
+
+    max_long_window = max(int(p["long_window"]) for p in selected_params)
+    warmup_rows = max(max_long_window, 14) + 1
+    first_validation_ts = validation_data.index.min()
+    warmup_data = optimization_data[optimization_data.index < first_validation_ts].tail(
+        warmup_rows
+    )
+
+    if warmup_data.empty:
+        return validation_data
+
+    combined = pd.concat([warmup_data, validation_data]).sort_index()
+    combined = combined[~combined.index.duplicated(keep="last")]
+    print(
+        "   Validation warmup: prepended "
+        f"{len(warmup_data)} historical candles so MA/ATR values are ready from day 1 "
+        f"(max long MA={max_long_window})."
+    )
+    return combined
+
+
 def run_iteration(
     iteration: int,
     symbol: str,
@@ -558,6 +724,11 @@ def run_iteration(
     out_dir: Path,
     initial_balance: float,
     quiet: bool,
+    enable_trailing_stop: bool,
+    breakeven_activation_r: float,
+    breakeven_buffer_atr: float,
+    trailing_activation_r: float,
+    trailing_atr_multiplier: float,
     max_workers: int,
     enable_monte_carlo: bool,
     monte_carlo_permutations: int,
@@ -799,6 +970,11 @@ def run_iteration(
         end_date=to_iso(requested_validation_end),
         interval=interval,
     )
+    validation_with_warmup = _build_validation_data_with_warmup(
+        optimization_data=optimization_data,
+        validation_data=validation_data,
+        selected_params=top_n,
+    )
 
     stop_reason = "max_window_reached"
     validation_end = requested_validation_end
@@ -806,13 +982,19 @@ def run_iteration(
     if validation_stop_mode == "result":
         filtered_result, stop_timestamp, stop_reason_from_engine = (
             run_majority_vote_validation(
-                data=validation_data,
+                data=validation_with_warmup,
                 param_sets=top_n,
                 symbol=symbol,
                 initial_balance=initial_balance,
                 verbose=not quiet,
                 mock_delay=0.0,
+                start_trading_at=validation_start,
                 stop_on_result=True,
+                enable_trailing_stop=enable_trailing_stop,
+                breakeven_activation_r=breakeven_activation_r,
+                breakeven_buffer_atr=breakeven_buffer_atr,
+                trailing_activation_r=trailing_activation_r,
+                trailing_atr_multiplier=trailing_atr_multiplier,
                 max_consecutive_losses=max_consecutive_losses,
                 return_stop_metadata=True,
             )
@@ -821,20 +1003,32 @@ def run_iteration(
             stop_reason = stop_reason_from_engine
         if stop_timestamp is not None:
             validation_end = stop_timestamp.date()
+        filtered_result = filtered_result[
+            filtered_result.index.date >= validation_start
+        ]
     else:
         result = run_majority_vote_validation(
-            data=validation_data,
+            data=validation_with_warmup,
             param_sets=top_n,
             symbol=symbol,
             initial_balance=initial_balance,
             verbose=not quiet,
             mock_delay=0.0,
+            enable_trailing_stop=enable_trailing_stop,
+            breakeven_activation_r=breakeven_activation_r,
+            breakeven_buffer_atr=breakeven_buffer_atr,
+            trailing_activation_r=trailing_activation_r,
+            trailing_atr_multiplier=trailing_atr_multiplier,
+            start_trading_at=validation_start,
         )
         time_stop_date = min(
             validation_start + timedelta(days=validation_stop_days),
             requested_validation_end,
         )
-        filtered_result = result[result.index.date <= time_stop_date]
+        filtered_result = result[
+            (result.index.date >= validation_start)
+            & (result.index.date <= time_stop_date)
+        ]
         validation_end = time_stop_date
         stop_reason = f"time_stop_after_{validation_stop_days}_days"
 
@@ -849,6 +1043,20 @@ def run_iteration(
     trades = extract_trade_history(filtered_result, initial_balance=initial_balance)
     trades_path = iter_dir / "validation_trades.csv"
     trades.to_csv(trades_path, index=False)
+    print_validation_trade_table(trades, iteration)
+
+    losing_mfe_path = iter_dir / "validation_losing_trades_mfe.csv"
+    losing_mfe_report = create_losing_trade_mfe_report(trades, losing_mfe_path)
+    if not losing_mfe_report.empty:
+        best_mfe = float(losing_mfe_report["max_favorable_pnl"].max()) * 100.0
+        positive_mfe_count = int((losing_mfe_report["max_favorable_pnl"] > 0).sum())
+        print(
+            "📉 Losing-trade MFE report: "
+            f"{losing_mfe_path} | "
+            f"losses={len(losing_mfe_report)} | "
+            f"positive-before-loss={positive_mfe_count} | "
+            f"best favorable move={best_mfe:.2f}%"
+        )
 
     metrics = calculate_performance_metrics(trades, initial_balance=initial_balance)
     metrics_path = iter_dir / "validation_metrics.json"
@@ -959,12 +1167,23 @@ def print_iteration_validation_summary(
         else "-"
     )
 
+    losing_sl_positive_mfe = int(
+        summary.validation_metrics.get("losing_sl_with_positive_mfe", 0)
+    )
+    losing_sl_count = int(summary.validation_metrics.get("losing_sl_trades", 0))
+    losing_sl_best_mfe_pct = (
+        float(summary.validation_metrics.get("losing_sl_best_max_favorable_pnl", 0.0))
+        * 100.0
+    )
+
     print(
         f"📌 Validation Summary (Iteration {summary.iteration}) | "
         f"{summary.validation_start} -> {summary.validation_end} | "
         f"Trades={total_trades} | "
         f"PnL={pnl_pct:.2f}% (₹{pnl_rupees:+.2f}) | "
         f"Win Rate={win_rate_pct:.2f}% | "
+        f"Losing SL positive MFE={losing_sl_positive_mfe}/{losing_sl_count} "
+        f"(best={losing_sl_best_mfe_pct:.2f}%) | "
         f"MC p-value={mc_p_value_text}"
     )
 
@@ -974,10 +1193,10 @@ def print_final_validation_summary(
 ) -> None:
     print("\n📋 FINAL VALIDATION SUMMARY")
     print(
-        "Iter | Date Range               | Trades | PnL%    | PnL ₹       | Win Rate | MC p-value"
+        "Iter | Date Range               | Trades | PnL%    | PnL ₹       | Win Rate | Loss SL +MFE | Best MFE | MC p-value"
     )
     print(
-        "-----+--------------------------+--------+---------+-------------+----------+-----------"
+        "-----+--------------------------+--------+---------+-------------+----------+-------------+----------+-----------"
     )
 
     total_trades = 0
@@ -997,6 +1216,14 @@ def print_final_validation_summary(
             if item.monte_carlo_enabled and item.monte_carlo_p_value is not None
             else "-"
         )
+        losing_sl_positive_mfe = int(
+            item.validation_metrics.get("losing_sl_with_positive_mfe", 0)
+        )
+        losing_sl_count = int(item.validation_metrics.get("losing_sl_trades", 0))
+        losing_sl_best_mfe_pct = (
+            float(item.validation_metrics.get("losing_sl_best_max_favorable_pnl", 0.0))
+            * 100.0
+        )
 
         total_trades += trades
         total_pnl_rupees += pnl_rupees
@@ -1006,19 +1233,22 @@ def print_final_validation_summary(
         print(
             f"{item.iteration:>4} | {date_range:<24} | "
             f"{trades:>6} | {pnl_pct:>6.2f}% | "
-            f"₹{pnl_rupees:>+10.2f} | {win_rate_pct:>7.2f}% | {mc_p_value_text:>9}"
+            f"₹{pnl_rupees:>+10.2f} | {win_rate_pct:>7.2f}% | "
+            f"{losing_sl_positive_mfe:>5}/{losing_sl_count:<5} | "
+            f"{losing_sl_best_mfe_pct:>7.2f}% | {mc_p_value_text:>9}"
         )
 
     avg_win_rate_weighted = (
         weighted_win_numerator / total_trades if total_trades > 0 else 0.0
     )
     print(
-        "-----+--------------------------+--------+---------+-------------+----------+-----------"
+        "-----+--------------------------+--------+---------+-------------+----------+-------------+----------+-----------"
     )
     print(
         f"TOTAL| {'ALL ITERATIONS':<24} | "
         f"{total_trades:>6} | {'-':>6}   | "
-        f"₹{total_pnl_rupees:>+10.2f} | {avg_win_rate_weighted:>7.2f}% | {'-':>9}"
+        f"₹{total_pnl_rupees:>+10.2f} | {avg_win_rate_weighted:>7.2f}% | "
+        f"{'-':>11} | {'-':>8} | {'-':>9}"
     )
 
 
@@ -1048,6 +1278,14 @@ def main() -> None:
         raise ValueError("monte-carlo-long-step must be > 0")
     if args.monte_carlo_rr_step <= 0:
         raise ValueError("monte-carlo-rr-step must be > 0")
+    if args.breakeven_activation_r < 0:
+        raise ValueError("breakeven-activation-r must be >= 0")
+    if args.breakeven_buffer_atr < 0:
+        raise ValueError("breakeven-buffer-atr must be >= 0")
+    if args.trailing_activation_r < 0:
+        raise ValueError("trailing-activation-r must be >= 0")
+    if args.trailing_atr_multiplier <= 0:
+        raise ValueError("trailing-atr-multiplier must be > 0")
 
     iterations: List[IterationSummary] = []
     cursor = start_date
@@ -1081,6 +1319,11 @@ def main() -> None:
             out_dir=out_dir,
             initial_balance=args.initial_balance,
             quiet=args.quiet,
+            enable_trailing_stop=args.enable_trailing_stop,
+            breakeven_activation_r=args.breakeven_activation_r,
+            breakeven_buffer_atr=args.breakeven_buffer_atr,
+            trailing_activation_r=args.trailing_activation_r,
+            trailing_atr_multiplier=args.trailing_atr_multiplier,
             max_workers=args.max_workers,
             enable_monte_carlo=args.enable_monte_carlo,
             monte_carlo_permutations=args.monte_carlo_permutations,
@@ -1138,6 +1381,18 @@ def main() -> None:
                 ),
                 "validation_max_drawdown": item.validation_metrics.get(
                     "max_drawdown", 0.0
+                ),
+                "validation_losing_sl_trades": item.validation_metrics.get(
+                    "losing_sl_trades", 0
+                ),
+                "validation_losing_sl_with_positive_mfe": item.validation_metrics.get(
+                    "losing_sl_with_positive_mfe", 0
+                ),
+                "validation_losing_sl_avg_max_favorable_pnl": item.validation_metrics.get(
+                    "losing_sl_avg_max_favorable_pnl", 0.0
+                ),
+                "validation_losing_sl_best_max_favorable_pnl": item.validation_metrics.get(
+                    "losing_sl_best_max_favorable_pnl", 0.0
                 ),
                 "monte_carlo_enabled": item.monte_carlo_enabled,
                 "monte_carlo_method": item.monte_carlo_method,

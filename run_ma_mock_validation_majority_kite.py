@@ -9,7 +9,7 @@ set maintains its own directional vote until its own TP is reached.
 
 import argparse
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import json
 import os
 import time
@@ -23,7 +23,6 @@ import plotly.graph_objects as go
 from data_fetcher import KiteDataFetcher
 from strategies import PositionType
 import config as cfg
-
 
 # ============================================================================
 # Defaults (validation-style)
@@ -44,6 +43,11 @@ DEFAULT_PARAM_SETS = [
 ]
 DEFAULT_NUM_LOTS = 1
 DEFAULT_LOT_SIZE = 250
+DEFAULT_ENABLE_TRAILING_STOP = True
+DEFAULT_BREAKEVEN_ACTIVATION_R = 2.0
+DEFAULT_BREAKEVEN_BUFFER_ATR = 0.10
+DEFAULT_TRAILING_ACTIVATION_R = DEFAULT_BREAKEVEN_ACTIVATION_R + 1
+DEFAULT_TRAILING_ATR_MULTIPLIER = 3.0
 # ============================================================================
 
 
@@ -170,6 +174,81 @@ def _calculate_pnl_rupees(
     return price_diff * num_lots * lot_size
 
 
+def _price_from_row(row: pd.Series, column: str, fallback: float) -> float:
+    value = row.get(column)
+    if pd.notna(value):
+        return float(value)
+    return fallback
+
+
+def _initialize_mfe_fields(trade: Dict, ts, row: pd.Series, price: float) -> None:
+    del row
+    trade["max_favorable_price"] = price
+    trade["max_favorable_time"] = ts
+    trade["max_favorable_pnl"] = 0.0
+    trade["max_favorable_pnl_rupees"] = 0.0
+
+
+def _update_mfe_fields(
+    trade: Dict, ts, row: pd.Series, price: float, favorable_price_override=None
+) -> None:
+    favorable_price = (
+        float(favorable_price_override)
+        if favorable_price_override is not None
+        else (
+            _price_from_row(row, "High", price)
+            if trade["action"] == "BUY"
+            else _price_from_row(row, "Low", price)
+        )
+    )
+    existing = trade.get("max_favorable_price", trade["entry_price"])
+    is_more_favorable = (
+        favorable_price > existing
+        if trade["action"] == "BUY"
+        else favorable_price < existing
+    )
+    if is_more_favorable:
+        trade["max_favorable_price"] = favorable_price
+        trade["max_favorable_time"] = ts
+        trade["max_favorable_pnl"] = max(
+            0.0,
+            (
+                (favorable_price - trade["entry_price"]) / trade["entry_price"]
+                if trade["action"] == "BUY"
+                else (trade["entry_price"] - favorable_price) / trade["entry_price"]
+            ),
+        )
+        trade["max_favorable_pnl_rupees"] = max(
+            0.0,
+            _calculate_pnl_rupees(
+                side=trade["action"],
+                entry_price=trade["entry_price"],
+                exit_price=favorable_price,
+            ),
+        )
+
+
+def _finalize_trade_pnl_fields(trade: Dict, exit_price: float) -> None:
+    pnl = (
+        (exit_price - trade["entry_price"]) / trade["entry_price"]
+        if trade["action"] == "BUY"
+        else (trade["entry_price"] - exit_price) / trade["entry_price"]
+    )
+    trade["pnl"] = pnl
+    trade["pnl_rupees"] = _calculate_pnl_rupees(
+        side=trade["action"],
+        entry_price=trade["entry_price"],
+        exit_price=exit_price,
+    )
+    trade["profit_given_back"] = max(
+        0.0, float(trade.get("max_favorable_pnl", 0.0)) - pnl
+    )
+    trade["profit_given_back_rupees"] = max(
+        0.0,
+        float(trade.get("max_favorable_pnl_rupees", 0.0)) - trade["pnl_rupees"],
+    )
+
+
 def run_majority_vote_validation(
     data: pd.DataFrame,
     param_sets: List[Dict],
@@ -180,8 +259,17 @@ def run_majority_vote_validation(
     stop_on_result: bool = False,
     max_consecutive_losses: int = 5,
     return_stop_metadata: bool = False,
+    enable_trailing_stop: bool = DEFAULT_ENABLE_TRAILING_STOP,
+    breakeven_activation_r: float = DEFAULT_BREAKEVEN_ACTIVATION_R,
+    breakeven_buffer_atr: float = DEFAULT_BREAKEVEN_BUFFER_ATR,
+    trailing_activation_r: float = DEFAULT_TRAILING_ACTIVATION_R,
+    trailing_atr_multiplier: float = DEFAULT_TRAILING_ATR_MULTIPLIER,
+    start_trading_at: Optional[Union[str, date, datetime, pd.Timestamp]] = None,
 ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Optional[pd.Timestamp], Optional[str]]]:
     df = data.copy()
+    trading_start_ts: Optional[pd.Timestamp] = None
+    if start_trading_at is not None:
+        trading_start_ts = pd.Timestamp(start_trading_at)
     df["ATR"] = calculate_atr(df)
 
     states: List[ParamSetState] = []
@@ -205,6 +293,9 @@ def run_majority_vote_validation(
     df["position"] = 0
     df["trade_take_profit"] = np.nan
     df["trade_stop_loss"] = np.nan
+    df["trade_trailing_active"] = False
+    df["trade_unrealized_r"] = np.nan
+    df["trade_max_favorable_price"] = np.nan
     df["event"] = ""
 
     current_position = PositionType.NONE
@@ -214,6 +305,10 @@ def run_majority_vote_validation(
     current_trade_entry_atr: Optional[float] = None
     current_trade_entry_balance: Optional[float] = None
     current_trade_side: Optional[str] = None
+    current_trade_initial_risk: Optional[float] = None
+    current_trade_highest_price: Optional[float] = None
+    current_trade_lowest_price: Optional[float] = None
+    current_trade_trailing_active = False
     sim_balance = float(initial_balance)
     last_majority_signal = 0
     min_required_votes = len(states) // 2 + 1
@@ -225,9 +320,26 @@ def run_majority_vote_validation(
     for i in range(1, len(df)):
         realized_trade_pnl: Optional[float] = None
         price = float(df["Close"].iloc[i])
+        high = float(df["High"].iloc[i])
+        low = float(df["Low"].iloc[i])
         atr = float(df["ATR"].iloc[i])
         if np.isnan(atr) or atr <= 0:
             atr = price * 0.01
+
+        current_ts = pd.Timestamp(df.index[i])
+        trading_enabled = True
+        if trading_start_ts is not None:
+            comparable_start_ts = trading_start_ts
+            if current_ts.tzinfo is not None and comparable_start_ts.tzinfo is None:
+                comparable_start_ts = comparable_start_ts.tz_localize(current_ts.tzinfo)
+            elif current_ts.tzinfo is None and comparable_start_ts.tzinfo is not None:
+                comparable_start_ts = comparable_start_ts.tz_localize(None)
+            trading_enabled = current_ts >= comparable_start_ts
+
+        if not trading_enabled:
+            if mock_delay > 0:
+                time.sleep(mock_delay)
+            continue
 
         for idx, st in enumerate(states):
             short_col = f"SMA_short_{idx}"
@@ -363,6 +475,14 @@ def run_majority_vote_validation(
                 current_trade_entry_atr = atr
                 current_trade_entry_balance = sim_balance
                 current_trade_side = "BUY"
+                current_trade_initial_risk = (
+                    abs(price - current_trade_sl)
+                    if current_trade_sl is not None
+                    else atr
+                )
+                current_trade_highest_price = high
+                current_trade_lowest_price = low
+                current_trade_trailing_active = False
             elif majority_signal == -1:
                 df.loc[df.index[i], "event"] = "SHORT_ENTRY"
                 current_position = PositionType.SHORT
@@ -384,6 +504,87 @@ def run_majority_vote_validation(
                 current_trade_entry_atr = atr
                 current_trade_entry_balance = sim_balance
                 current_trade_side = "SELL"
+                current_trade_initial_risk = (
+                    abs(current_trade_sl - price)
+                    if current_trade_sl is not None
+                    else atr
+                )
+                current_trade_highest_price = high
+                current_trade_lowest_price = low
+                current_trade_trailing_active = False
+
+        # If the trade has moved enough in our favour, protect it with a
+        # breakeven move first and then a Chandelier-style ATR trailing stop.
+        if (
+            enable_trailing_stop
+            and current_position != PositionType.NONE
+            and current_trade_entry_price is not None
+            and current_trade_initial_risk is not None
+            and current_trade_initial_risk > 0
+        ):
+            current_trade_highest_price = (
+                high
+                if current_trade_highest_price is None
+                else max(current_trade_highest_price, high)
+            )
+            current_trade_lowest_price = (
+                low
+                if current_trade_lowest_price is None
+                else min(current_trade_lowest_price, low)
+            )
+
+            if current_position == PositionType.LONG:
+                unrealized_r = (
+                    price - current_trade_entry_price
+                ) / current_trade_initial_risk
+                if unrealized_r >= breakeven_activation_r:
+                    breakeven_sl = current_trade_entry_price + (
+                        breakeven_buffer_atr * atr
+                    )
+                    if current_trade_sl is None or breakeven_sl > current_trade_sl:
+                        if verbose:
+                            print(
+                                f"🛡️  [{df.index[i]}] LONG SL moved to breakeven+buffer @ {breakeven_sl:.2f}"
+                            )
+                        current_trade_sl = breakeven_sl
+                if unrealized_r >= trailing_activation_r:
+                    current_trade_trailing_active = True
+                    trailing_sl = current_trade_highest_price - (
+                        trailing_atr_multiplier * atr
+                    )
+                    if current_trade_sl is None or trailing_sl > current_trade_sl:
+                        if verbose:
+                            print(
+                                f"🛡️  [{df.index[i]}] LONG ATR trailing SL moved @ {trailing_sl:.2f} "
+                                f"(high_since_entry={current_trade_highest_price:.2f}, ATR={atr:.2f})"
+                            )
+                        current_trade_sl = trailing_sl
+            elif current_position == PositionType.SHORT:
+                unrealized_r = (
+                    current_trade_entry_price - price
+                ) / current_trade_initial_risk
+                if unrealized_r >= breakeven_activation_r:
+                    breakeven_sl = current_trade_entry_price - (
+                        breakeven_buffer_atr * atr
+                    )
+                    if current_trade_sl is None or breakeven_sl < current_trade_sl:
+                        if verbose:
+                            print(
+                                f"🛡️  [{df.index[i]}] SHORT SL moved to breakeven+buffer @ {breakeven_sl:.2f}"
+                            )
+                        current_trade_sl = breakeven_sl
+                if unrealized_r >= trailing_activation_r:
+                    current_trade_trailing_active = True
+                    trailing_sl = current_trade_lowest_price + (
+                        trailing_atr_multiplier * atr
+                    )
+                    if current_trade_sl is None or trailing_sl < current_trade_sl:
+                        if verbose:
+                            print(
+                                f"🛡️  [{df.index[i]}] SHORT ATR trailing SL moved @ {trailing_sl:.2f} "
+                                f"(low_since_entry={current_trade_lowest_price:.2f}, ATR={atr:.2f})"
+                            )
+                        current_trade_sl = trailing_sl
 
         # If in a trade, enforce TP/SL exits using levels captured at entry.
         if current_position == PositionType.LONG:
@@ -428,10 +629,18 @@ def run_majority_vote_validation(
                 current_trade_entry_atr = None
                 current_trade_entry_balance = None
                 current_trade_side = None
+                current_trade_initial_risk = None
+                current_trade_highest_price = None
+                current_trade_lowest_price = None
+                current_trade_trailing_active = False
             elif current_trade_sl is not None and price <= current_trade_sl:
-                df.loc[df.index[i], "event"] = "EXIT_SL"
+                exit_event = (
+                    "EXIT_TRAILING_SL" if current_trade_trailing_active else "EXIT_SL"
+                )
+                df.loc[df.index[i], "event"] = exit_event
                 if verbose:
-                    print(f"🟢 [{df.index[i]}] Majority Vote - LONG EXIT (SL)")
+                    reason = "TRAILING SL" if current_trade_trailing_active else "SL"
+                    print(f"🟢 [{df.index[i]}] Majority Vote - LONG EXIT ({reason})")
                 current_position = PositionType.NONE
                 if (
                     current_trade_entry_price is not None
@@ -469,6 +678,10 @@ def run_majority_vote_validation(
                 current_trade_entry_atr = None
                 current_trade_entry_balance = None
                 current_trade_side = None
+                current_trade_initial_risk = None
+                current_trade_highest_price = None
+                current_trade_lowest_price = None
+                current_trade_trailing_active = False
         elif current_position == PositionType.SHORT:
             if current_trade_tp is not None and price <= current_trade_tp:
                 df.loc[df.index[i], "event"] = "EXIT_TP"
@@ -511,10 +724,18 @@ def run_majority_vote_validation(
                 current_trade_entry_atr = None
                 current_trade_entry_balance = None
                 current_trade_side = None
+                current_trade_initial_risk = None
+                current_trade_highest_price = None
+                current_trade_lowest_price = None
+                current_trade_trailing_active = False
             elif current_trade_sl is not None and price >= current_trade_sl:
-                df.loc[df.index[i], "event"] = "EXIT_SL"
+                exit_event = (
+                    "EXIT_TRAILING_SL" if current_trade_trailing_active else "EXIT_SL"
+                )
+                df.loc[df.index[i], "event"] = exit_event
                 if verbose:
-                    print(f"🟢 [{df.index[i]}] Majority Vote - SHORT EXIT (SL)")
+                    reason = "TRAILING SL" if current_trade_trailing_active else "SL"
+                    print(f"🟢 [{df.index[i]}] Majority Vote - SHORT EXIT ({reason})")
                 current_position = PositionType.NONE
                 if (
                     current_trade_entry_price is not None
@@ -552,12 +773,35 @@ def run_majority_vote_validation(
                 current_trade_entry_atr = None
                 current_trade_entry_balance = None
                 current_trade_side = None
+                current_trade_initial_risk = None
+                current_trade_highest_price = None
+                current_trade_lowest_price = None
+                current_trade_trailing_active = False
 
         df.loc[df.index[i], "position"] = current_position.value
         if current_trade_tp is not None:
             df.loc[df.index[i], "trade_take_profit"] = current_trade_tp
         if current_trade_sl is not None:
             df.loc[df.index[i], "trade_stop_loss"] = current_trade_sl
+        if (
+            current_position != PositionType.NONE
+            and current_trade_entry_price is not None
+        ):
+            if current_position == PositionType.LONG:
+                max_favorable_price = current_trade_highest_price
+                if current_trade_initial_risk and current_trade_initial_risk > 0:
+                    df.loc[df.index[i], "trade_unrealized_r"] = (
+                        price - current_trade_entry_price
+                    ) / current_trade_initial_risk
+            else:
+                max_favorable_price = current_trade_lowest_price
+                if current_trade_initial_risk and current_trade_initial_risk > 0:
+                    df.loc[df.index[i], "trade_unrealized_r"] = (
+                        current_trade_entry_price - price
+                    ) / current_trade_initial_risk
+            if max_favorable_price is not None:
+                df.loc[df.index[i], "trade_max_favorable_price"] = max_favorable_price
+            df.loc[df.index[i], "trade_trailing_active"] = current_trade_trailing_active
 
         if stop_on_result and realized_trade_pnl is not None:
             if realized_trade_pnl > 0:
@@ -588,11 +832,14 @@ def extract_trade_history(df: pd.DataFrame, initial_balance: float) -> pd.DataFr
     running_balance = initial_balance
 
     for ts, row in df.iterrows():
+        price = float(row["Close"])
         event = str(row.get("event", ""))
+        if open_trade is not None and event not in {"EXIT_TP", "EXIT_SL"}:
+            _update_mfe_fields(open_trade, ts, row, price)
+
         if not event:
             continue
 
-        price = float(row["Close"])
         tp = row.get("trade_take_profit")
         sl = row.get("trade_stop_loss")
         atr = row.get("ATR")
@@ -614,13 +861,21 @@ def extract_trade_history(df: pd.DataFrame, initial_balance: float) -> pd.DataFr
                 "status": "open",
                 "balance_before": running_balance,
             }
+            _initialize_mfe_fields(open_trade, ts, row, price)
             continue
 
-        if event in {"EXIT_TP", "EXIT_SL"} and open_trade is not None:
+        if (
+            event in {"EXIT_TP", "EXIT_SL", "EXIT_TRAILING_SL"}
+            and open_trade is not None
+        ):
             open_trade["exit_time"] = ts
             open_trade["exit_price"] = price
             open_trade["exit_atr"] = float(atr) if pd.notna(atr) else None
-            open_trade["status"] = "tp_hit" if event == "EXIT_TP" else "sl_hit"
+            open_trade["status"] = (
+                "tp_hit"
+                if event == "EXIT_TP"
+                else "trailing_sl_hit" if event == "EXIT_TRAILING_SL" else "sl_hit"
+            )
             pnl = (
                 (price - open_trade["entry_price"]) / open_trade["entry_price"]
                 if open_trade["action"] == "BUY"
@@ -640,22 +895,14 @@ def extract_trade_history(df: pd.DataFrame, initial_balance: float) -> pd.DataFr
     if open_trade is not None:
         final_price = float(df["Close"].iloc[-1])
         final_ts = df.index[-1]
+        final_row = df.iloc[-1]
+        _update_mfe_fields(open_trade, final_ts, final_row, final_price)
         open_trade["exit_time"] = final_ts
         open_trade["exit_price"] = final_price
         final_atr = df["ATR"].iloc[-1]
         open_trade["exit_atr"] = float(final_atr) if pd.notna(final_atr) else None
         open_trade["status"] = "closed_end"
-        pnl = (
-            (final_price - open_trade["entry_price"]) / open_trade["entry_price"]
-            if open_trade["action"] == "BUY"
-            else (open_trade["entry_price"] - final_price) / open_trade["entry_price"]
-        )
-        open_trade["pnl"] = pnl
-        open_trade["pnl_rupees"] = _calculate_pnl_rupees(
-            side=open_trade["action"],
-            entry_price=open_trade["entry_price"],
-            exit_price=final_price,
-        )
+        _finalize_trade_pnl_fields(open_trade, exit_price=final_price)
         running_balance += open_trade["pnl_rupees"]
         open_trade["balance_after"] = running_balance
         trades.append(open_trade)
@@ -671,6 +918,11 @@ def calculate_performance_metrics(trades: pd.DataFrame, initial_balance: float) 
             "total_pnl": 0.0,
             "final_balance": initial_balance,
             "max_drawdown": 0.0,
+            "losing_sl_trades": 0,
+            "losing_sl_with_positive_mfe": 0,
+            "losing_sl_avg_max_favorable_pnl": 0.0,
+            "losing_sl_best_max_favorable_pnl": 0.0,
+            "losing_sl_total_profit_given_back_rupees": 0.0,
         }
 
     wins = (trades["pnl"] > 0).sum()
@@ -685,12 +937,41 @@ def calculate_performance_metrics(trades: pd.DataFrame, initial_balance: float) 
     drawdown = (equity - peak) / peak
     max_drawdown = float(drawdown.min()) if not drawdown.empty else 0.0
 
+    losing_trades = trades[trades["pnl"] < 0].copy()
+    losing_sl_trades = losing_trades[losing_trades["status"] == "sl_hit"].copy()
+    if "max_favorable_pnl" in losing_sl_trades.columns and not losing_sl_trades.empty:
+        positive_mfe = losing_sl_trades[losing_sl_trades["max_favorable_pnl"] > 0]
+        losing_sl_count = int(len(losing_sl_trades))
+        losing_sl_with_positive_mfe = int(len(positive_mfe))
+        losing_sl_avg_max_favorable_pnl = float(
+            losing_sl_trades["max_favorable_pnl"].mean()
+        )
+        losing_sl_best_max_favorable_pnl = float(
+            losing_sl_trades["max_favorable_pnl"].max()
+        )
+        losing_sl_total_profit_given_back_rupees = float(
+            losing_sl_trades.get(
+                "profit_given_back_rupees", pd.Series(dtype=float)
+            ).sum()
+        )
+    else:
+        losing_sl_count = int(len(losing_sl_trades))
+        losing_sl_with_positive_mfe = 0
+        losing_sl_avg_max_favorable_pnl = 0.0
+        losing_sl_best_max_favorable_pnl = 0.0
+        losing_sl_total_profit_given_back_rupees = 0.0
+
     return {
         "total_trades": total_trades,
         "win_rate": float(win_rate),
         "total_pnl": float(total_pnl),
         "final_balance": final_balance,
         "max_drawdown": max_drawdown,
+        "losing_sl_trades": losing_sl_count,
+        "losing_sl_with_positive_mfe": losing_sl_with_positive_mfe,
+        "losing_sl_avg_max_favorable_pnl": losing_sl_avg_max_favorable_pnl,
+        "losing_sl_best_max_favorable_pnl": losing_sl_best_max_favorable_pnl,
+        "losing_sl_total_profit_given_back_rupees": losing_sl_total_profit_given_back_rupees,
     }
 
 
@@ -839,9 +1120,7 @@ def create_ohlc_trade_chart(
                     name=set_label,
                     legendgroup=legend_group,
                     showlegend=True,
-                    line=dict(
-                        width=1.4, color=short_palette[idx % len(short_palette)]
-                    ),
+                    line=dict(width=1.4, color=short_palette[idx % len(short_palette)]),
                 )
             )
             fig.add_trace(
@@ -922,6 +1201,20 @@ def create_ohlc_trade_chart(
                 + "<br>PnL (Rs): "
                 + exits["pnl_rupees"].map(lambda x: f"{x:+,.2f}")
             )
+            if "max_favorable_pnl" in exits.columns:
+                hover = (
+                    hover
+                    + "<br>Max favorable: "
+                    + exits["max_favorable_pnl"].map(lambda x: f"{x * 100:.2f}%")
+                    + "<br>Max favorable (Rs): "
+                    + exits["max_favorable_pnl_rupees"].map(lambda x: f"{x:+,.2f}")
+                )
+            if "profit_given_back" in exits.columns:
+                hover = (
+                    hover
+                    + "<br>Profit given back: "
+                    + exits["profit_given_back"].map(lambda x: f"{x * 100:.2f}%")
+                )
             fig.add_trace(
                 go.Scatter(
                     x=exits["exit_time"],
@@ -1048,6 +1341,36 @@ def parse_args() -> argparse.Namespace:
         "--no-open-chart", action="store_true", help="Do not auto-open OHLC chart"
     )
     p.add_argument("--initial-balance", type=float, default=10000.0)
+    p.add_argument(
+        "--enable-trailing-stop",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_ENABLE_TRAILING_STOP,
+        help="Enable breakeven plus ATR/Chandelier trailing stop during validation.",
+    )
+    p.add_argument(
+        "--breakeven-activation-r",
+        type=float,
+        default=DEFAULT_BREAKEVEN_ACTIVATION_R,
+        help="Move SL to breakeven after this many initial-risk units in profit.",
+    )
+    p.add_argument(
+        "--breakeven-buffer-atr",
+        type=float,
+        default=DEFAULT_BREAKEVEN_BUFFER_ATR,
+        help="ATR buffer beyond entry when moving the SL to breakeven.",
+    )
+    p.add_argument(
+        "--trailing-activation-r",
+        type=float,
+        default=DEFAULT_TRAILING_ACTIVATION_R,
+        help="Start ATR/Chandelier trailing after this many initial-risk units in profit.",
+    )
+    p.add_argument(
+        "--trailing-atr-multiplier",
+        type=float,
+        default=DEFAULT_TRAILING_ATR_MULTIPLIER,
+        help="ATR multiplier used for the Chandelier trailing stop distance.",
+    )
     p.add_argument("--out", default="ma_mock_results_kite", help="Output directory")
     return p.parse_args()
 
@@ -1060,6 +1383,14 @@ def main() -> None:
     end_date = args.end if args.end is not None else DEFAULT_END_DATE
     interval = args.interval if args.interval is not None else DEFAULT_INTERVAL
     param_sets = load_param_sets(args.params, args.params_file)
+    if args.breakeven_activation_r < 0:
+        raise ValueError("breakeven-activation-r must be >= 0")
+    if args.breakeven_buffer_atr < 0:
+        raise ValueError("breakeven-buffer-atr must be >= 0")
+    if args.trailing_activation_r < 0:
+        raise ValueError("trailing-activation-r must be >= 0")
+    if args.trailing_atr_multiplier <= 0:
+        raise ValueError("trailing-atr-multiplier must be > 0")
 
     print("🚀 MA Majority-vote MOCK VALIDATION (Kite)")
     print("=" * 60)
@@ -1069,6 +1400,12 @@ def main() -> None:
     print(f"End: {end_date}")
     print(f"Interval: {interval}")
     print(f"Param sets ({len(param_sets)}): {param_sets}")
+    print(
+        "Trailing stop: "
+        f"{args.enable_trailing_stop} "
+        f"(BE={args.breakeven_activation_r}R + {args.breakeven_buffer_atr} ATR, "
+        f"trail={args.trailing_activation_r}R / {args.trailing_atr_multiplier} ATR)"
+    )
     print("🚦 Running live-style mock simulation...")
 
     data = fetch_kite_data(symbol, exchange, start_date, end_date, interval)
@@ -1079,6 +1416,11 @@ def main() -> None:
         initial_balance=args.initial_balance,
         verbose=not args.quiet,
         mock_delay=args.mock_delay,
+        enable_trailing_stop=args.enable_trailing_stop,
+        breakeven_activation_r=args.breakeven_activation_r,
+        breakeven_buffer_atr=args.breakeven_buffer_atr,
+        trailing_activation_r=args.trailing_activation_r,
+        trailing_atr_multiplier=args.trailing_atr_multiplier,
     )
     summarize(result)
 
