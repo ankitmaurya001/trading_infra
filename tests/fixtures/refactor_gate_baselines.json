@@ -1,0 +1,113 @@
+{
+  "donchian": {
+    "best_params": {
+      "channel_period": 8,
+      "risk_reward_ratio": 1.8,
+      "trading_fee": 0.0005
+    },
+    "failed_runs": 0,
+    "future_metrics": {
+      "calmar_ratio": -10.723970725994171,
+      "geometric_mean_return": -0.024121499518089617,
+      "max_drawdown": 0.09305071915606122,
+      "profit_factor": 0.0,
+      "sharpe_ratio": -6.4731226006029186,
+      "total_pnl": -0.09305071915606122,
+      "total_trades": 4,
+      "win_rate": 0.0
+    },
+    "future_signal_counts": {
+      "-1": 2,
+      "-2": 2,
+      "0": 71,
+      "1": 3,
+      "2": 2
+    },
+    "tested_results": 4,
+    "train_metrics": {
+      "calmar_ratio": 999.0,
+      "geometric_mean_return": 0.0174049124576785,
+      "max_drawdown": 0.07163652203792327,
+      "profit_factor": 3.3088808076858207,
+      "sharpe_ratio": 0.5952298607227267,
+      "total_pnl": 0.25146812720348577,
+      "total_trades": 13,
+      "win_rate": 0.6923076923076923
+    }
+  },
+  "ma": {
+    "best_params": {
+      "long_window": 18,
+      "risk_reward_ratio": 1.2,
+      "short_window": 3,
+      "trading_fee": 0.0005
+    },
+    "failed_runs": 0,
+    "future_metrics": {
+      "calmar_ratio": 325.84504825975495,
+      "geometric_mean_return": 0.008501221051770314,
+      "max_drawdown": 0.02283994769157982,
+      "profit_factor": 2.1497544924387957,
+      "sharpe_ratio": 0.3184644582104033,
+      "total_pnl": 0.02572108982312482,
+      "total_trades": 3,
+      "win_rate": 0.6666666666666666
+    },
+    "future_signal_counts": {
+      "-1": 2,
+      "-2": 2,
+      "0": 74,
+      "1": 1,
+      "2": 1
+    },
+    "tested_results": 4,
+    "train_metrics": {
+      "calmar_ratio": 999.0,
+      "geometric_mean_return": 0.025217128532376787,
+      "max_drawdown": 0,
+      "profit_factor": 999.0,
+      "sharpe_ratio": 10.869428053409116,
+      "total_pnl": 0.3151472697791333,
+      "total_trades": 11,
+      "win_rate": 1.0
+    }
+  },
+  "rsi": {
+    "best_params": {
+      "overbought": 70,
+      "oversold": 30,
+      "period": 14,
+      "risk_reward_ratio": 1.8,
+      "trading_fee": 0.0005
+    },
+    "failed_runs": 0,
+    "future_metrics": {
+      "calmar_ratio": 72.86485684040035,
+      "geometric_mean_return": 0.0034207183839414235,
+      "max_drawdown": 0.018725911199990897,
+      "profit_factor": 1.3202491839194166,
+      "sharpe_ratio": 0.10157066510717389,
+      "total_pnl": 0.01029729912151156,
+      "total_trades": 3,
+      "win_rate": 0.3333333333333333
+    },
+    "future_signal_counts": {
+      "-1": 2,
+      "-2": 1,
+      "0": 73,
+      "1": 2,
+      "2": 2
+    },
+    "tested_results": 4,
+    "train_metrics": {
+      "calmar_ratio": 23.652421527716434,
+      "geometric_mean_return": 0.001331583808287684,
+      "max_drawdown": 0.048419470460134784,
+      "profit_factor": 1.1295017875104982,
+      "sharpe_ratio": 0.054786912946953654,
+      "total_pnl": 0.014745333853266152,
+      "total_trades": 11,
+      "win_rate": 0.36363636363636365
+    }
+  }
+}

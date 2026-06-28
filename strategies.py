@@ -355,7 +355,10 @@ class BaseStrategy(ABC):
             mean_return = np.mean(returns)
             downside_returns = [r for r in returns if r < 0]
             if downside_returns:
-                downside_deviation = np.std(downside_returns, ddof=1)
+                if len(downside_returns) > 1:
+                    downside_deviation = np.std(downside_returns, ddof=1)
+                else:
+                    downside_deviation = abs(downside_returns[0])
                 sortino_ratio = mean_return / max(downside_deviation, EPSILON)
             else:
                 # BUG FIX: Cap sortino_ratio at 999.0 instead of inf (like profit_factor)
