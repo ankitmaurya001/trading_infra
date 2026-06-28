@@ -1,4 +1,3 @@
-import yfinance as yf
 import pandas as pd
 import numpy as np
 from typing import Optional, Tuple, Dict, Any
@@ -8,7 +7,24 @@ import logging
 import requests
 import re
 from urllib.parse import urlparse, parse_qs
-import onetimepass as otp
+
+# TOTP imports for Kite authentication
+try:
+    import onetimepass as otp
+    ONETIMEPASS_AVAILABLE = True
+except ImportError:
+    otp = None
+    ONETIMEPASS_AVAILABLE = False
+    logging.warning("onetimepass not available. Install with: pip install onetimepass")
+
+# Yahoo Finance imports
+try:
+    import yfinance as yf
+    YFINANCE_AVAILABLE = True
+except ImportError:
+    yf = None
+    YFINANCE_AVAILABLE = False
+    logging.warning("yfinance not available. Install with: pip install yfinance")
 
 # Kite Connect imports
 try:
@@ -70,6 +86,10 @@ class DataFetcher:
         Returns:
             pd.DataFrame: Cleaned OHLCV data
         """
+        if not YFINANCE_AVAILABLE:
+            print("Error fetching data: yfinance is not installed")
+            return pd.DataFrame()
+
         try:
             stock = yf.Ticker(symbol)
             self.data = stock.history(start=start_date, end=end_date, interval=interval)
@@ -80,6 +100,7 @@ class DataFetcher:
                     df.index = df.index.tz_localize('UTC').tz_convert('Asia/Kolkata')
                 else:
                     df.index = df.index.tz_convert('Asia/Kolkata')
+            self.data = df
             return df
         except Exception as e:
             print(f"Error fetching data: {e}")
@@ -102,7 +123,7 @@ class DataFetcher:
             return pd.DataFrame()
             
         # Remove missing values
-        df = self.data.dropna()
+        df = self.data.dropna().copy()
         
         # Calculate daily returns
         df['Returns'] = df['Close'].pct_change()
@@ -116,6 +137,7 @@ class DataFetcher:
         # Calculate key points (where price moved more than multiplier * average daily return)
         df['Key_Point'] = abs(df['Returns']) > (key_point_multiplier * abs(df['Avg_Daily_Return']))
         
+        self.data = df
         return df
     
     def get_key_points(self) -> pd.DataFrame:
@@ -262,6 +284,9 @@ class KiteDataFetcher:
         print(f"[INFO] request_id = {request_id}")
         
         # Step 3: TOTP 2FA
+        if not ONETIMEPASS_AVAILABLE:
+            raise ImportError("onetimepass not available. Install with: pip install onetimepass")
+
         totp_value = otp.get_totp(self.credentials["totp_key"])
         print(f"[INFO] Generated TOTP: {totp_value}")
         
