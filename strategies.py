@@ -625,10 +625,13 @@ class BaseStrategy(ABC):
         return data.copy()
 
 class MovingAverageCrossover(BaseStrategy):
-    def __init__(self, short_window: int = 20, long_window: int = 50, risk_reward_ratio: float = 2.0, trading_fee: float = 0.0):
+    def __init__(self, short_window: int = 20, long_window: int = 50, risk_reward_ratio: float = 2.0, trading_fee: float = 0.0, min_atr: float = 0.0):
         super().__init__("Moving Average Crossover", risk_reward_ratio, trading_fee=trading_fee)
+        if min_atr < 0:
+            raise ValueError(f"Minimum ATR must be non-negative, got: {min_atr}")
         self.short_window = short_window
         self.long_window = long_window
+        self.min_atr = min_atr
     
     def precompute_indicators(self, data: pd.DataFrame, windows: Iterable[int]) -> Dict[str, object]:
         """
@@ -703,7 +706,7 @@ class MovingAverageCrossover(BaseStrategy):
             curr_short = df['SMA_short'].iloc[i]
             curr_long = df['SMA_long'].iloc[i]
             current_price = df['Close'].iloc[i]
-            current_atr = df['ATR'].iloc[i]
+            current_atr = max(df['ATR'].iloc[i], self.min_atr)
             
             # Skip iteration if any required values are NaN (early periods)
             if np.isnan(prev_short) or np.isnan(prev_long) or np.isnan(curr_short) or np.isnan(curr_long) or np.isnan(current_atr):

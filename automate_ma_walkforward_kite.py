@@ -66,13 +66,13 @@ RISK_REWARD_RATIOS = [5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]
 # RISK_REWARD_RATIOS = [5.0, 6.0]
 
 # Global defaults for CLI-required runtime fields
-DEFAULT_SYMBOL = "NATGASMINI26MAYFUT"
+DEFAULT_SYMBOL = "NATGASMINI26JULFUT"
 # DEFAULT_SYMBOL = "CRUDEOILM26MARFUT"
 DEFAULT_EXCHANGE = "MCX"
 # for getting trading params
-# DEFAULT_START_DATE = (date.today() - timedelta(days=61)).strftime("%Y-%m-%d")
+DEFAULT_START_DATE = (date.today() - timedelta(days=61)).strftime("%Y-%m-%d")
 # for running siumation on old data
-DEFAULT_START_DATE = (date.today() - timedelta(days=120)).strftime("%Y-%m-%d")
+#DEFAULT_START_DATE = (date.today() - timedelta(days=120)).strftime("%Y-%m-%d")
 DEFAULT_OPTIMIZATION_DAYS = 60
 DEFAULT_VALIDATION_DAYS = 30
 DEFAULT_MAX_CONSECUTIVE_LOSSES = 5
@@ -1088,7 +1088,9 @@ def run_iteration(
         title_suffix=chart_summary_with_opt,
         auto_open=True,
     )
-    validation_ohlc = validation_data[validation_data.index.date <= validation_end]
+    validation_ohlc = validation_with_warmup[
+        validation_with_warmup.index.date <= validation_end
+    ]
     create_ohlc_trade_chart(
         ohlc=validation_ohlc,
         trades=trades,
@@ -1098,6 +1100,7 @@ def run_iteration(
         output_path=str(iter_dir / "validation_ohlc_trades.html"),
         title_suffix=chart_summary_with_opt,
         auto_open=True,
+        display_start_at=validation_start,
     )
 
     return (

@@ -43,9 +43,9 @@ DEFAULT_PARAM_SETS = [
 ]
 DEFAULT_NUM_LOTS = 1
 DEFAULT_LOT_SIZE = 250
-DEFAULT_ENABLE_TRAILING_STOP = True
-DEFAULT_BREAKEVEN_ACTIVATION_R = 2.0
-DEFAULT_BREAKEVEN_BUFFER_ATR = 0.10
+DEFAULT_ENABLE_TRAILING_STOP = False
+DEFAULT_BREAKEVEN_ACTIVATION_R = 3.0
+DEFAULT_BREAKEVEN_BUFFER_ATR = 1
 DEFAULT_TRAILING_ACTIVATION_R = DEFAULT_BREAKEVEN_ACTIVATION_R + 1
 DEFAULT_TRAILING_ATR_MULTIPLIER = 3.0
 # ============================================================================
@@ -310,7 +310,7 @@ def run_majority_vote_validation(
     current_trade_lowest_price: Optional[float] = None
     current_trade_trailing_active = False
     sim_balance = float(initial_balance)
-    last_majority_signal = 0
+    previous_majority_signal = 0
     min_required_votes = len(states) // 2 + 1
 
     consecutive_losses = 0
@@ -420,7 +420,8 @@ def run_majority_vote_validation(
             majority_signal = -1
         df.loc[df.index[i], "majority_signal"] = majority_signal
 
-        if verbose and majority_signal != last_majority_signal:
+        majority_changed = majority_signal != previous_majority_signal
+        if verbose and majority_changed:
             label = (
                 "LONG"
                 if majority_signal == 1
@@ -429,7 +430,6 @@ def run_majority_vote_validation(
             print(
                 f"🧮 [{df.index[i]}] Majority -> {label} (long_votes={long_votes}, short_votes={short_votes}, required={min_required_votes})"
             )
-            last_majority_signal = majority_signal
 
         latest_long_vote = max(
             (
@@ -451,9 +451,9 @@ def run_majority_vote_validation(
         )
 
         # Entry-only model:
-        # - Open trade only when flat and a strict majority appears.
+        # - Open trade only when flat and a new strict majority appears.
         # - Once in trade, ignore majority changes; exit only via TP/SL.
-        if current_position == PositionType.NONE:
+        if current_position == PositionType.NONE and majority_changed:
             if majority_signal == 1:
                 df.loc[df.index[i], "event"] = "LONG_ENTRY"
                 current_position = PositionType.LONG
@@ -818,6 +818,8 @@ def run_majority_vote_validation(
         if mock_delay > 0:
             time.sleep(mock_delay)
 
+        previous_majority_signal = majority_signal
+
     if stop_timestamp is not None:
         df = df[df.index <= stop_timestamp].copy()
 
@@ -1057,6 +1059,7 @@ def create_ohlc_trade_chart(
     output_path: str,
     title_suffix: Optional[str] = None,
     auto_open: bool = False,
+    display_start_at: Optional[Union[str, date, datetime, pd.Timestamp]] = None,
 ) -> Optional[str]:
     if ohlc is None or ohlc.empty:
         print("⚠️  No OHLC data to plot")
@@ -1068,18 +1071,6 @@ def create_ohlc_trade_chart(
     if missing:
         print(f"⚠️  Missing OHLC columns for chart: {missing}")
         return None
-
-    fig = go.Figure()
-    fig.add_trace(
-        go.Candlestick(
-            x=chart_df.index,
-            open=chart_df["open"],
-            high=chart_df["high"],
-            low=chart_df["low"],
-            close=chart_df["close"],
-            name="OHLC",
-        )
-    )
 
     if param_sets:
         short_palette = [
@@ -1111,6 +1102,37 @@ def create_ohlc_trade_chart(
             set_label = f"Set {idx + 1} MA (S{short_window}/L{long_window})"
             chart_df[short_col] = chart_df["close"].rolling(short_window).mean()
             chart_df[long_col] = chart_df["close"].rolling(long_window).mean()
+
+    if display_start_at is not None:
+        display_start_ts = pd.Timestamp(display_start_at)
+        if not chart_df.empty:
+            first_chart_ts = pd.Timestamp(chart_df.index[0])
+            if first_chart_ts.tzinfo is not None and display_start_ts.tzinfo is None:
+                display_start_ts = display_start_ts.tz_localize(first_chart_ts.tzinfo)
+            elif first_chart_ts.tzinfo is None and display_start_ts.tzinfo is not None:
+                display_start_ts = display_start_ts.tz_localize(None)
+        chart_df = chart_df[chart_df.index >= display_start_ts]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Candlestick(
+            x=chart_df.index,
+            open=chart_df["open"],
+            high=chart_df["high"],
+            low=chart_df["low"],
+            close=chart_df["close"],
+            name="OHLC",
+        )
+    )
+
+    if param_sets:
+        for idx, p in enumerate(param_sets):
+            short_window = int(p["short_window"])
+            long_window = int(p["long_window"])
+            short_col = f"short_ma_{idx}"
+            long_col = f"long_ma_{idx}"
+            legend_group = f"ma_set_{idx}"
+            set_label = f"Set {idx + 1} MA (S{short_window}/L{long_window})"
 
             fig.add_trace(
                 go.Scatter(
