@@ -1,6 +1,8 @@
 import pandas as pd
 from datetime import datetime
 
+import pytest
+
 from trading_engine import TradingEngine
 
 
@@ -71,5 +73,4 @@ def test_close_trades_uses_quantity_only_for_fx_pnl():
 
     # Balance should be previous balance + margin_used + dollar_pnl
     assert pytest.approx(engine.current_balance, rel=1e-9) == margin_used + expected_dollar_pnl
-
 

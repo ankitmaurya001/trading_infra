@@ -60,6 +60,16 @@ class KiteTradingEngine:
         # Commodity trading configuration
         commodity_config = self.config.get('commodity_trading', {})
         self.market_protection = commodity_config.get('market_protection', -1)
+        self.num_lots = commodity_config.get(
+            'num_lots',
+            commodity_config.get('quantity', self.config.get('num_lots', 1))
+        )
+        try:
+            self.num_lots = int(self.num_lots)
+        except (TypeError, ValueError):
+            raise ValueError(f"commodity_trading.num_lots must be a positive integer, got: {self.num_lots}")
+        if self.num_lots < 1:
+            raise ValueError(f"commodity_trading.num_lots must be >= 1, got: {self.num_lots}")
 
         # Initialize data fetcher and authenticate first (needed for margin check)
         self.data_fetcher = KiteDataFetcher(
@@ -121,6 +131,10 @@ class KiteTradingEngine:
         self.trading_engine.broker = self.broker
         self.trading_engine.use_broker = self.live_trading
         self.trading_engine.symbol = self.symbol  # self.symbol is now defined
+        self.trading_engine.exchange = self.exchange
+        self.trading_engine.commodity_trade_lots = self.num_lots
+        self.trading_engine.set_risk_limits(self.config.get('risk', {}))
+        print(f"📦 Configured commodity trade quantity: {self.num_lots} lot(s)")
         
         # Commodity trading configuration
         self.margin_buffer_percent = commodity_config.get('margin_buffer_percent', 20)
@@ -286,6 +300,7 @@ class KiteTradingEngine:
                     "trading_fee": 0.0
                 },
                 "commodity_trading": {
+                    "num_lots": 1,
                     "enable_margin_monitoring": True,
                     "margin_buffer_percent": 20,
                     "margin_check_interval_seconds": 300,
@@ -1002,7 +1017,8 @@ class KiteTradingEngine:
                 broker_qty = broker_position_map.get(self.symbol, 0)
                 
                 # Determine if position should exist
-                expected_qty = 1 if trade.get('action') == 'BUY' else -1  # 1 lot for LONG, -1 for SHORT
+                trade_qty = int(trade.get('quantity') or self.num_lots)
+                expected_qty = trade_qty if trade.get('action') == 'BUY' else -trade_qty
                 
                 # Check if GTT might have triggered (position closed but we think it's open)
                 if broker_qty == 0:
@@ -1206,15 +1222,15 @@ class KiteTradingEngine:
                             order_margins = self.broker.get_order_margins(
                                 symbol=self.symbol,
                                 transaction_type=transaction_type,
-                                quantity=1,  # 1 lot
+                                quantity=int(first_open_trade.get('quantity') or self.num_lots),
                                 price=current_price,
                                 order_type='MARKET'
                             )
-                            margin_per_lot_at_current = order_margins.get('total', 0.0)
-                            if margin_per_lot_at_current > 0:
+                            margin_for_trade_at_current = order_margins.get('total', 0.0)
+                            if margin_for_trade_at_current > 0:
                                 # Multiply by number of open trades
                                 num_open_trades = sum(1 for t in self.trading_engine.active_trades if t.get('status') == 'open')
-                                total_required_margin_at_current_price = margin_per_lot_at_current * num_open_trades
+                                total_required_margin_at_current_price = margin_for_trade_at_current * num_open_trades
                     except Exception as e:
                         self.logger.debug(f"Could not get current price margin requirement (non-critical): {e}")
                         # Use stored margin_used as fallback

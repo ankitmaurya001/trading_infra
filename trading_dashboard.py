@@ -262,6 +262,7 @@ class TradingDashboard:
                     'entry_time': rejected_record['timestamp'],
                     'entry_price': rejected_record['price'],
                     'quantity': rejected_record['quantity'],
+                    'lot_size': rejected_record.get('lot_size', None),
                     'leverage': rejected_record.get('leverage', 0.0),
                     'position_size': rejected_record.get('position_size', 0.0),
                     'margin_used': rejected_record.get('margin_used', None),
@@ -307,6 +308,7 @@ class TradingDashboard:
                 'entry_time': entry_record['timestamp'],
                 'entry_price': entry_record['price'],
                 'quantity': entry_record['quantity'],
+                'lot_size': entry_record.get('lot_size', None),
                 'leverage': entry_record.get('effective_leverage', entry_record.get('leverage', 1.0)),
                 'position_size': entry_record.get('position_size', entry_record['quantity'] * entry_record['price']),
                 'margin_used': entry_record.get('margin_used', None),
@@ -705,7 +707,7 @@ class TradingDashboard:
                 # Select columns for rejected trades display
                 rejected_columns = [
                     'trade_id', 'direction', 'strategy', 'entry_time', 'entry_price',
-                    'quantity', 'leverage', 'reject_reason'
+                    'quantity', 'lot_size', 'leverage', 'reject_reason'
                 ]
                 
                 # Ensure all columns exist
@@ -718,7 +720,7 @@ class TradingDashboard:
                 # Rename columns for better display
                 rejected_display.columns = [
                     'Trade ID', 'Direction', 'Strategy', 'Entry Time', 'Entry Price',
-                    'Quantity', 'Leverage', 'Rejection Reason'
+                    'Lots / Qty', 'Lot Size', 'Leverage', 'Rejection Reason'
                 ]
                 
                 # Style rejected trades with red background
@@ -752,6 +754,14 @@ class TradingDashboard:
                 # Add price change column
                 display_df['price_change'] = display_df['exit_price'] - display_df['entry_price']
                 display_df['price_change_pct'] = ((display_df['exit_price'] - display_df['entry_price']) / display_df['entry_price'] * 100).round(2)
+                if 'lot_size' not in display_df.columns:
+                    display_df['lot_size'] = pd.NA
+                display_df['contract_units'] = display_df.apply(
+                    lambda row: row['quantity'] * row['lot_size']
+                    if pd.notna(row.get('lot_size')) and row.get('lot_size', 0) > 0
+                    else row['quantity'],
+                    axis=1
+                )
                 
                 # Select and reorder columns for display
                 # Calculate margin_used if not present (fallback for older trades)
@@ -766,7 +776,8 @@ class TradingDashboard:
                 display_columns = [
                     'trade_id', 'direction', 'strategy', 'entry_time', 'exit_time',
                     'entry_price', 'exit_price', 'price_change', 'price_change_pct',
-                    'quantity', 'leverage', 'margin_used', 'atr', 'pnl', 'pnl_pct', 'exit_status'
+                    'quantity', 'lot_size', 'contract_units', 'leverage', 'margin_used',
+                    'atr', 'pnl', 'pnl_pct', 'exit_status'
                 ]
                 
                 display_df = display_df[display_columns]
@@ -775,7 +786,8 @@ class TradingDashboard:
                 display_df.columns = [
                     'Trade ID', 'Direction', 'Strategy', 'Entry Time', 'Exit Time',
                     'Entry Price', 'Exit Price', 'Price Change', 'Price Change %',
-                    'Quantity', 'Leverage', 'Margin Used', 'ATR', 'PnL', 'PnL %', 'Exit Status'
+                    'Lots / Qty', 'Lot Size', 'Contract Units', 'Leverage', 'Margin Used',
+                    'ATR', 'PnL', 'PnL %', 'Exit Status'
                 ]
                 
                 # Color code PnL
@@ -1569,7 +1581,7 @@ def main():
             st.subheader("🎯 Active Trade")
             trade_info = status['active_trade_info']
             
-            col1, col2, col3, col4, col5 = st.columns(5)
+            col1, col2, col3, col4, col5, col6 = st.columns(6)
             with col1:
                 st.metric("Strategy", trade_info['strategy'])
             with col2:
@@ -1583,16 +1595,40 @@ def main():
             with col4:
                 quantity = trade_info.get('quantity')
                 if quantity is not None and not pd.isna(quantity):
-                    st.metric("Quantity", f"{quantity:.4f}")
+                    label = "Lots" if trade_info.get('lot_size') else "Quantity"
+                    st.metric(label, f"{quantity:.4f}")
                 else:
                     st.metric("Quantity", "N/A")
             with col5:
-                atr_val = trade_info.get('atr', None)
-                if atr_val is not None and not pd.isna(atr_val):
-                    st.metric("ATR (entry)", f"{atr_val:.4f}")
+                lot_size = trade_info.get('lot_size')
+                contract_units = trade_info.get('contract_units')
+                if lot_size is not None and not pd.isna(lot_size):
+                    st.metric("Lot Size", f"{lot_size:,.0f}")
+                    if contract_units is not None and not pd.isna(contract_units):
+                        st.caption(f"Units: {contract_units:,.0f}")
                 else:
-                    st.metric("ATR (entry)", "N/A")
+                    st.metric("Lot Size", "N/A")
+            with col6:
+                margin_used = trade_info.get('margin_used')
+                if margin_used is not None and not pd.isna(margin_used):
+                    st.metric("Margin Used", f"₹{margin_used:,.0f}")
+                else:
+                    st.metric("Margin Used", "N/A")
             
+            atr_val = trade_info.get('atr', None)
+            if atr_val is not None and not pd.isna(atr_val):
+                st.caption(f"ATR at entry: {atr_val:.4f}")
+            else:
+                st.caption("ATR at entry: N/A")
+            
+            with st.expander("Active trade sizing details", expanded=False):
+                st.write({
+                    "lots_or_quantity": trade_info.get("quantity"),
+                    "lot_size": trade_info.get("lot_size"),
+                    "contract_units": trade_info.get("contract_units"),
+                    "position_size": trade_info.get("position_size"),
+                    "margin_used": trade_info.get("margin_used"),
+                })
             # Calculate current PnL if we have current data
             if not market_data.empty:
                 current_price = market_data['Close'].iloc[-1]

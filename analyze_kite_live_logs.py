@@ -44,8 +44,10 @@ TRADE_REQUIRED_COLUMNS = [
     "action",
     "price",
     "quantity",
+    "lot_size",
     "leverage",
     "position_size",
+    "margin_used",
     "atr",
     "balance",
     "pnl",
@@ -152,7 +154,7 @@ def _coerce_trade_frame(df: pd.DataFrame, session: SessionFiles) -> pd.DataFrame
     df["source_format"] = "kite_tradebook" if is_kite_tradebook else "live_session"
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
 
-    numeric_columns = ["price", "quantity", "leverage", "position_size", "atr", "balance", "pnl"]
+    numeric_columns = ["price", "quantity", "lot_size", "leverage", "position_size", "margin_used", "atr", "balance", "pnl"]
     for column in numeric_columns:
         df[column] = pd.to_numeric(df[column], errors="coerce")
 
@@ -281,22 +283,27 @@ def _add_money_columns(
     entry_price = _safe_float(row.get("entry_price"), np.nan)
     exit_price = _safe_float(row.get("exit_price"), np.nan)
     quantity = _safe_float(row.get("quantity"), 0.0)
+    lot_size = _safe_float(row.get("lot_size"), np.nan)
+    contract_units = quantity * lot_size if not math.isnan(lot_size) and lot_size > 0 else quantity
     direction = str(row.get("direction", "")).upper()
     direction_sign = 1 if direction == "BUY" else -1 if direction == "SELL" else 0
-    entry_notional = entry_price * quantity if not math.isnan(entry_price) else np.nan
-    exit_notional = exit_price * quantity if not math.isnan(exit_price) else np.nan
+    entry_notional = entry_price * contract_units if not math.isnan(entry_price) else np.nan
+    exit_notional = exit_price * contract_units if not math.isnan(exit_price) else np.nan
     turnover = _safe_float(entry_notional, 0.0) + _safe_float(exit_notional, 0.0)
 
     gross_pnl = row.get("gross_pnl_rupees")
     if gross_pnl is None or pd.isna(gross_pnl):
-        price_pnl = (exit_price - entry_price) * quantity * direction_sign if direction_sign and not math.isnan(entry_price) and not math.isnan(exit_price) else np.nan
+        price_pnl = (exit_price - entry_price) * contract_units * direction_sign if direction_sign and not math.isnan(entry_price) and not math.isnan(exit_price) else np.nan
         balance_pnl = np.nan
         entry_balance = _safe_float(row.get("entry_balance"), np.nan)
         exit_balance = _safe_float(row.get("exit_balance"), np.nan)
+        margin_used = _safe_float(row.get("margin_used"), np.nan)
         if not math.isnan(entry_balance) and not math.isnan(exit_balance):
             balance_pnl = exit_balance - entry_balance
         fractional_pnl = _safe_float(row.get("pnl"), np.nan)
-        if not math.isnan(balance_pnl):
+        if not math.isnan(fractional_pnl) and not math.isnan(margin_used):
+            gross_pnl = fractional_pnl * margin_used
+        elif not math.isnan(balance_pnl):
             gross_pnl = balance_pnl
         elif not math.isnan(fractional_pnl) and not math.isnan(entry_balance):
             gross_pnl = fractional_pnl * entry_balance
@@ -490,8 +497,10 @@ def build_closed_trades(
                 "entry_price": entry_price,
                 "exit_price": exit_price,
                 "quantity": quantity,
+                "lot_size": _safe_float(entry.get("lot_size"), np.nan),
                 "leverage": _safe_float(entry.get("leverage"), np.nan),
                 "position_size": _safe_float(entry.get("position_size"), np.nan),
+                "margin_used": _safe_float(entry.get("margin_used"), np.nan),
                 "atr": atr,
                 "price_move": price_move,
                 "price_move_pct": price_move_pct,

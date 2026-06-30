@@ -53,6 +53,22 @@ def _to_json_bytes(payload: Dict[str, object]) -> bytes:
     return json.dumps(clean_payload, indent=2, default=str).encode("utf-8")
 
 
+def _with_contract_units(df: pd.DataFrame) -> pd.DataFrame:
+    """Add contract units when a lot size is available."""
+    result = df.copy()
+    if "quantity" not in result.columns:
+        return result
+    if "lot_size" not in result.columns:
+        result["lot_size"] = pd.NA
+    result["contract_units"] = result.apply(
+        lambda row: row["quantity"] * row["lot_size"]
+        if pd.notna(row.get("lot_size")) and row.get("lot_size", 0) > 0
+        else row["quantity"],
+        axis=1,
+    )
+    return result
+
+
 def _load_uploaded_trades(uploaded_file) -> pd.DataFrame:
     uploaded_file.seek(0)
     return pd.read_csv(uploaded_file)
@@ -191,12 +207,15 @@ def render_summary_tables(closed: pd.DataFrame) -> None:
             st.dataframe(summaries.get(name, pd.DataFrame()), use_container_width=True, hide_index=True)
 
     with tabs[4]:
+        closed = _with_contract_units(closed)
         display_cols = [
             "symbol",
             "direction",
             "entry_time",
             "exit_time",
             "quantity",
+            "lot_size",
+            "contract_units",
             "entry_price",
             "exit_price",
             "gross_pnl_rupees",
@@ -206,7 +225,15 @@ def render_summary_tables(closed: pd.DataFrame) -> None:
             "status",
         ]
         available_cols = [col for col in display_cols if col in closed.columns]
-        st.dataframe(closed[available_cols].sort_values("exit_time", ascending=False), use_container_width=True, hide_index=True)
+        display = closed[available_cols].sort_values("exit_time", ascending=False)
+        display = display.rename(
+            columns={
+                "quantity": "lots_or_quantity",
+                "lot_size": "lot_size",
+                "contract_units": "contract_units",
+            }
+        )
+        st.dataframe(display, use_container_width=True, hide_index=True)
 
 
 def render_position_check(trades: pd.DataFrame) -> None:

@@ -68,6 +68,8 @@ class TradingEngine:
         # Performance tracking
         self.total_pnl = 0
         self.unrealized_pnl = 0
+        # For commodity futures, quantity means number of lots.
+        self.commodity_trade_lots = 1
         
     def setup_logging(self, session_id: str, symbol: str, session_folder: str = None):
         """
@@ -97,7 +99,8 @@ class TradingEngine:
         # Initialize trade log
         trade_log_df = pd.DataFrame(columns=[
             'timestamp', 'symbol', 'strategy', 'action', 'price', 'quantity', 
-            'leverage', 'position_size', 'atr', 'balance', 'pnl', 'trade_id', 'status', 'reject_reason'
+            'lot_size', 'leverage', 'effective_leverage', 'position_size', 'margin_used',
+            'atr', 'balance', 'pnl', 'trade_id', 'status', 'reject_reason'
         ])
         trade_log_df.to_csv(self.trade_log_file, index=False)
         
@@ -121,6 +124,14 @@ class TradingEngine:
         self.risk_limits['max_daily_notional'] = limits.get('max_daily_notional')
         self.risk_limits['max_open_orders'] = limits.get('max_open_orders')
         self.risk_limits['enable_kill_switch'] = limits.get('enable_kill_switch', False)
+
+    def _get_commodity_trade_lots(self) -> int:
+        """Return the configured number of commodity lots to trade."""
+        try:
+            lots = int(getattr(self, 'commodity_trade_lots', 1) or 1)
+        except (TypeError, ValueError):
+            lots = 1
+        return max(lots, 1)
 
     def _reset_daily_counters_if_needed(self, current_time: datetime):
         day = current_time.date()
@@ -271,35 +282,13 @@ class TradingEngine:
             max_loss_percent=self.max_loss_percent
         )
         
-        # For commodity futures (Kite broker OR MCX commodities), quantity should be 1 (number of lots)
+        # For commodity futures (Kite broker OR MCX commodities), quantity is
+        # the configured number of lots.
         # The calculated quantity is in base units, but we trade in lots
         original_quantity = quantity
         if is_kite_broker or is_mcx_commodity:
-            quantity = 1  # 1 lot for commodity futures
-            print(f"📦 Overriding quantity to 1 lot for commodity futures (original calculated: {original_quantity:.4f})")
-        
-        # Risk checks
-        expected_notional = position_size
-        ok, reason = self._check_risk_and_update(expected_notional, timestamp)
-        if not ok:
-            print(f"⛔ Trade rejected by risk controls: {reason}")
-            rejection = {
-                'id': len(self.trade_history) + 1,
-                'strategy': strategy.name,
-                'action': action,
-                'entry_price': price,
-                'entry_time': timestamp,
-                'quantity': 0.0,
-                'leverage': 0.0,
-                'position_size': 0.0,
-                'atr': current_atr,
-                'status': 'rejected',
-                'pnl': 0,
-                'reject_reason': reason
-            }
-            self.trade_history.append(rejection)
-            self._log_trade(rejection, price, timestamp)
-            return rejection
+            quantity = self._get_commodity_trade_lots()
+            print(f"📦 Overriding quantity to {quantity} lot(s) for commodity futures (original calculated: {original_quantity:.4f})")
         
         # Margin check for Kite broker (lot-based trading)
         # Check margin even in virtual mode to validate trades would be possible
@@ -313,7 +302,7 @@ class TradingEngine:
                 order_margins = self.broker.get_order_margins(
                     symbol=self.symbol,
                     transaction_type=transaction_type,
-                    quantity=1,  # 1 lot for commodities
+                    quantity=quantity,
                     price=price,
                     order_type='MARKET'
                 )
@@ -434,18 +423,46 @@ class TradingEngine:
         
         if not lot_size and (is_kite_broker or is_mcx_commodity):
             print(f"⚠️  Could not determine lot_size for {self.symbol if hasattr(self, 'symbol') else 'symbol'}")
+
+        if (is_kite_broker or is_mcx_commodity) and lot_size:
+            position_size = price * lot_size * quantity
+            print(f"📦 Commodity Position Size: ₹{position_size:,.2f} ({quantity} lot(s) × lot size {lot_size} × price ₹{price:.2f})")
+
+        # Risk checks use the actual commodity contract notional when lot size is known.
+        expected_notional = position_size
+        ok, reason = self._check_risk_and_update(expected_notional, timestamp)
+        if not ok:
+            print(f"⛔ Trade rejected by risk controls: {reason}")
+            rejection = {
+                'id': len(self.trade_history) + 1,
+                'strategy': strategy.name,
+                'action': action,
+                'entry_price': price,
+                'entry_time': timestamp,
+                'quantity': 0.0,
+                'leverage': 0.0,
+                'position_size': 0.0,
+                'atr': current_atr,
+                'status': 'rejected',
+                'pnl': 0,
+                'reject_reason': reason
+            }
+            self.trade_history.append(rejection)
+            self._log_trade(rejection, price, timestamp)
+            return rejection
         
         # Only proceed with SL/TP validation if we have both lot_size and actual_lot_margin
         if is_kite_broker and actual_lot_margin and actual_lot_margin > 0 and lot_size:
             try:
                 # Calculate potential loss with current stop loss (after buffer)
                 sl_price_move = abs(price - stop_loss)
-                sl_loss_rupees = lot_size * sl_price_move
+                sl_loss_rupees = lot_size * quantity * sl_price_move
                 sl_loss_percent = (sl_loss_rupees / actual_lot_margin) * 100
                 
                 # Calculate max allowed loss
                 max_loss_rupees = actual_lot_margin * (self.max_loss_percent / 100.0)
-                max_price_move = max_loss_rupees / lot_size if lot_size > 0 else sl_price_move
+                contract_units = lot_size * quantity
+                max_price_move = max_loss_rupees / contract_units if contract_units > 0 else sl_price_move
                 
                 # Cap the stop loss if it exceeds max_loss_percent (even after buffer)
                 sl_capped = False
@@ -458,14 +475,14 @@ class TradingEngine:
                 
                 # Log SL/TP levels
                 actual_price_move = abs(price - stop_loss)
-                actual_loss_rupees = lot_size * actual_price_move
+                actual_loss_rupees = lot_size * quantity * actual_price_move
                 actual_loss_percent = (actual_loss_rupees / actual_lot_margin) * 100
                 
                 tp_price_move = abs(take_profit - price)
-                tp_profit_rupees = lot_size * tp_price_move
+                tp_profit_rupees = lot_size * quantity * tp_price_move
                 tp_profit_percent = (tp_profit_rupees / actual_lot_margin) * 100
                 
-                print(f"📊 ATR-based SL/TP (Lot size: {lot_size}, ATR: ₹{current_atr:.2f})")
+                print(f"📊 ATR-based SL/TP (Lots: {quantity}, Lot size: {lot_size}, ATR: ₹{current_atr:.2f})")
                 if atr_buffer_applied:
                     print(f"   📈 ATR Buffer: +{self.atr_buffer_percent}% wider SL/TP")
                 if sl_capped:
@@ -482,9 +499,9 @@ class TradingEngine:
         gtt_order = None
         if self.broker and self.use_broker:
             try:
-                # For Kite broker, use lot-based quantity (1 lot)
+                # For Kite broker, use the configured lot-based quantity.
                 # For other brokers, use calculated quantity
-                order_quantity = 1 if is_kite_broker else quantity
+                order_quantity = quantity
                 
                 # Place MARKET order for immediate execution
                 broker_order = self.broker.place_order(
@@ -747,8 +764,7 @@ class TradingEngine:
                             # → place a MARKET order to close the position.
                             try:
                                 exit_side = 'SELL' if trade['action'] == 'BUY' else 'BUY'
-                                # For Kite broker, use 1 lot; for others, use trade quantity
-                                exit_quantity = 1 if is_kite_broker else trade['quantity']
+                                exit_quantity = trade['quantity']
                                 broker_exit_order = self.broker.place_order(
                                     symbol=self.symbol,
                                     side=exit_side,
@@ -905,8 +921,11 @@ class TradingEngine:
             if trade['status'] == 'open':
                 # Calculate current value of the position
                 current_price = current_data['Close'].iloc[-1] if current_data is not None and not current_data.empty else trade['entry_price']
-                current_value = trade['quantity'] * current_price
-                original_value = trade['quantity'] * trade['entry_price']
+                lot_size = trade.get('lot_size')
+                quantity = trade.get('quantity', 0)
+                contract_units = quantity * lot_size if lot_size and lot_size > 0 else quantity
+                current_value = contract_units * current_price
+                original_value = contract_units * trade['entry_price']
                 
                 if trade['action'] == 'BUY':
                     unrealized_pnl += current_value - original_value
@@ -918,7 +937,11 @@ class TradingEngine:
                     'strategy': trade['strategy'],
                     'action': trade['action'],
                     'entry_price': trade['entry_price'],
-                    'quantity': trade['quantity'],
+                    'quantity': quantity,
+                    'lot_size': lot_size,
+                    'contract_units': contract_units,
+                    'position_size': trade.get('position_size'),
+                    'margin_used': trade.get('margin_used'),
                     'entry_time': trade['entry_time'],
                     # ATR at entry (useful for sizing + explaining risk)
                     'atr': trade.get('atr', None)
@@ -1146,8 +1169,11 @@ class TradingEngine:
                 'action': 'EXIT' if is_exit else trade['action'],
                 'price': price,
                 'quantity': trade['quantity'],
+                'lot_size': trade.get('lot_size'),
                 'leverage': trade.get('leverage', 1.0),
+                'effective_leverage': trade.get('effective_leverage', trade.get('leverage', 1.0)),
                 'position_size': trade.get('position_size', trade['quantity'] * price),
+                'margin_used': trade.get('margin_used'),
                 'atr': trade.get('atr', 0.0),
                 'balance': self.current_balance,
                 'pnl': trade.get('pnl', 0),

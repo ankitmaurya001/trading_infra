@@ -34,6 +34,7 @@ class DataBrokerStub:
         self.available_margin = available_margin
         self.lot_margin = lot_margin
         self.lot_size = lot_size
+        self.margin_queries = []
         self.placed_orders = []
         self.placed_gtts = []
         self.deleted_gtts = []
@@ -42,6 +43,15 @@ class DataBrokerStub:
         return {"available": self.available_margin, "utilised": 0.0}
 
     def get_order_margins(self, symbol, transaction_type, quantity, price, order_type):
+        self.margin_queries.append(
+            {
+                "symbol": symbol,
+                "transaction_type": transaction_type,
+                "quantity": quantity,
+                "price": price,
+                "order_type": order_type,
+            }
+        )
         return {"total": self.lot_margin}
 
     def place_order(self, symbol, side, order_type, quantity, price=None):
@@ -198,3 +208,41 @@ def test_take_profit_close_places_market_exit_order():
     assert len(broker.placed_orders) == 2
     assert broker.placed_orders[-1]["side"] == "SELL"
     assert broker.placed_orders[-1]["order_type"] == "MARKET"
+
+
+def test_configured_commodity_lots_propagate_to_margin_orders_and_pnl():
+    engine = TradingEngine(
+        initial_balance=1000.0, max_leverage=2.0, max_loss_percent=1.0
+    )
+    engine.symbol = "NATGASMINI26FEBFUT"
+    engine.commodity_trade_lots = 3
+    broker = DataBrokerStub(available_margin=1000.0, lot_margin=600.0, lot_size=10)
+    engine.broker = broker
+    engine.use_broker = True
+    strategy = DummyStrategy()
+    ts = datetime(2024, 1, 1, 9, 15)
+
+    trade = engine.execute_trade(strategy, "BUY", 100.0, ts, _sample_ohlc())
+
+    assert trade["quantity"] == 3
+    assert trade["lot_size"] == 10
+    assert trade["position_size"] == 3000.0
+    assert trade["margin_used"] == 600.0
+    assert broker.margin_queries[-1]["quantity"] == 3
+    assert broker.placed_orders[0]["quantity"] == 3
+    assert broker.placed_gtts[0]["quantity"] == 3
+
+    _append_closed_strategy_trade(
+        strategy, status="tp_hit", entry_price=100.0, exit_price=110.0, ts=ts
+    )
+    closed = engine.close_trades(
+        strategy=strategy,
+        position_type="LONG",
+        price=110.0,
+        timestamp=datetime(2024, 1, 1, 9, 30),
+        exit_type="tp_hit",
+    )
+
+    assert len(closed) == 1
+    assert broker.placed_orders[-1]["quantity"] == 3
+    assert closed[0]["pnl"] == pytest.approx(0.5)

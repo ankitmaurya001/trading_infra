@@ -66,6 +66,7 @@ Edit `trading_config_kite.json`:
     "live_trading": false,               // Place real orders (true) or virtual (false)
     "enabled_strategies": ["ma"],        // Strategies to use
     "commodity_trading": {
+        "num_lots": 1,                   // Number of lots per trade
         "margin_buffer_percent": 20,     // Extra margin buffer (%)
         "margin_check_interval_seconds": 300,  // Margin check frequency
         "margin_alert_threshold_percent": 150,  // Alert if margin < 150% of required
@@ -192,7 +193,7 @@ Monitor the logs to see:
 
 ### Position Management
 
-- **Lot-Based Trading**: Automatically uses 1 lot per position
+- **Lot-Based Trading**: Uses `commodity_trading.num_lots` per position
 - **Position Syncing**: Syncs with Kite positions
 - **PnL Tracking**: Real-time profit/loss calculation
 
@@ -269,4 +270,3 @@ For issues or questions:
 1. Check logs in `logs/` directory
 2. Run test script to verify API connectivity
 3. Check Kite Connect API documentation: https://kite.trade/docs/
-

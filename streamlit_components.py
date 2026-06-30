@@ -166,7 +166,12 @@ def display_trading_status(status: Dict, simulator=None):
             st.caption(f"📈 {trade_info['strategy']} - {trade_info['action']}")
             st.caption(f"Entry: ${trade_info['entry_price']:.2f}")
             if 'quantity' in trade_info:
-                st.caption(f"Qty: {trade_info['quantity']:.4f}")
+                qty_label = "Lots" if trade_info.get('lot_size') else "Qty"
+                st.caption(f"{qty_label}: {trade_info['quantity']:.4f}")
+            if trade_info.get('lot_size'):
+                st.caption(f"Lot size: {trade_info['lot_size']}")
+            if trade_info.get('contract_units'):
+                st.caption(f"Units: {trade_info['contract_units']}")
             if 'entry_time' in trade_info:
                 entry_time = trade_info['entry_time']
                 # Handle both string and datetime objects
