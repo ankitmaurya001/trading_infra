@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
 from enum import Enum
-from dataclasses import dataclass
-from typing import List, Dict, Iterable
+from dataclasses import dataclass, field
+from typing import Any, Dict, Iterable, List, Tuple, Type
 
 # Constants for numerical stability
 EPSILON = 1e-8  # Small value to prevent division by zero
@@ -36,7 +38,70 @@ class PositionType(Enum):
     LONG = 1
     SHORT = -1
 
+@dataclass(frozen=True)
+class StrategyDefinition:
+    """
+    Template/contract for adding a strategy to optimization and live trading.
+
+    A new strategy should:
+    - subclass BaseStrategy
+    - expose a unique STRATEGY_KEY
+    - expose OPTIMIZATION_PARAM_RANGES for grid search
+    - expose LIVE_PARAMETER_NAMES for required optimized/live params
+    - implement validate_parameters for invalid parameter combinations
+    - implement generate_signals and return Signal/Position/Take_Profit/Stop_Loss
+    """
+    key: str
+    name: str
+    strategy_class: Type['BaseStrategy']
+    optimization_param_ranges: Dict[str, List[Any]]
+    live_parameter_names: Tuple[str, ...]
+    optimization_defaults: Dict[str, Any] = field(default_factory=dict)
+
+    def validate_parameters(self, params: Dict[str, Any]) -> bool:
+        """Return True when params can be optimized and used live."""
+        if not self.has_required_live_parameters(params):
+            return False
+        validator = getattr(self.strategy_class, "validate_parameters", None)
+        if validator is None:
+            return True
+        return bool(validator(params))
+
+    def has_required_live_parameters(self, params: Dict[str, Any]) -> bool:
+        """Check that an optimized params dict can instantiate the live strategy."""
+        return all(param in params for param in self.live_parameter_names)
+
+    def create_strategy(self, params: Dict[str, Any]) -> 'BaseStrategy':
+        """Instantiate the live strategy from optimized/manual params."""
+        if not self.validate_parameters(params):
+            raise ValueError(f"Invalid parameters for {self.key}: {params}")
+        strategy_params = {
+            name: params[name]
+            for name in self.live_parameter_names
+            if name in params
+        }
+        return self.strategy_class(**strategy_params)
+
+    def default_params(self) -> Dict[str, Any]:
+        """Pick the first optimization value for each param as a minimal example."""
+        return {
+            name: values[0]
+            for name, values in self.optimization_param_ranges.items()
+            if values
+        }
+
 class BaseStrategy(ABC):
+    STRATEGY_KEY: str = ""
+    STRATEGY_NAME: str = ""
+    OPTIMIZATION_PARAM_RANGES: Dict[str, List[Any]] = {}
+    LIVE_PARAMETER_NAMES: Tuple[str, ...] = ()
+    OPTIMIZATION_DEFAULTS: Dict[str, Any] = {
+        "optimization_metric": "composite_score",
+        "min_trades": 10,
+        "max_drawdown_threshold": 0.4,
+        "sharpe_threshold": 0.1,
+    }
+
     def __init__(self, name: str, risk_reward_ratio: float = 2.0, atr_period: int = 14, trading_fee: float = 0.0):
         # Validate inputs
         if not name or not isinstance(name, str):
@@ -59,6 +124,33 @@ class BaseStrategy(ABC):
         self.trading_fee = trading_fee  # Trading fee as a percentage (e.g., 0.001 for 0.1%)
         self.trades: List[Trade] = []
         self.active_trade: Trade = None
+
+    @classmethod
+    def get_definition(cls) -> StrategyDefinition:
+        """Return the optimization/live template metadata for this strategy."""
+        if not cls.STRATEGY_KEY:
+            raise NotImplementedError(f"{cls.__name__} must define STRATEGY_KEY")
+        if not cls.OPTIMIZATION_PARAM_RANGES:
+            raise NotImplementedError(f"{cls.__name__} must define OPTIMIZATION_PARAM_RANGES")
+        if not cls.LIVE_PARAMETER_NAMES:
+            raise NotImplementedError(f"{cls.__name__} must define LIVE_PARAMETER_NAMES")
+
+        return StrategyDefinition(
+            key=cls.STRATEGY_KEY,
+            name=cls.STRATEGY_NAME or cls.__name__,
+            strategy_class=cls,
+            optimization_param_ranges={
+                name: list(values)
+                for name, values in cls.OPTIMIZATION_PARAM_RANGES.items()
+            },
+            live_parameter_names=tuple(cls.LIVE_PARAMETER_NAMES),
+            optimization_defaults=dict(cls.OPTIMIZATION_DEFAULTS),
+        )
+
+    @classmethod
+    def validate_parameters(cls, params: Dict[str, Any]) -> bool:
+        """Validate strategy-specific parameter combinations."""
+        return True
     
     def calculate_atr(self, data: pd.DataFrame) -> pd.Series:
         """
@@ -628,6 +720,21 @@ class BaseStrategy(ABC):
         return data.copy()
 
 class MovingAverageCrossover(BaseStrategy):
+    STRATEGY_KEY = "ma"
+    STRATEGY_NAME = "Moving Average Crossover"
+    OPTIMIZATION_PARAM_RANGES = {
+        "short_window": [5, 10, 15, 20, 25, 30],
+        "long_window": [20, 30, 40, 50, 60, 70],
+        "risk_reward_ratio": [1.5, 2.0, 2.5, 3.0],
+        "trading_fee": [0.001],
+    }
+    LIVE_PARAMETER_NAMES = (
+        "short_window",
+        "long_window",
+        "risk_reward_ratio",
+        "trading_fee",
+    )
+
     def __init__(self, short_window: int = 20, long_window: int = 50, risk_reward_ratio: float = 2.0, trading_fee: float = 0.0, min_atr: float = 0.0):
         super().__init__("Moving Average Crossover", risk_reward_ratio, trading_fee=trading_fee)
         if min_atr < 0:
@@ -635,6 +742,12 @@ class MovingAverageCrossover(BaseStrategy):
         self.short_window = short_window
         self.long_window = long_window
         self.min_atr = min_atr
+
+    @classmethod
+    def validate_parameters(cls, params: Dict[str, Any]) -> bool:
+        short_window = params.get('short_window', 0)
+        long_window = params.get('long_window', 0)
+        return short_window > 0 and long_window > 0 and short_window < long_window
     
     def precompute_indicators(self, data: pd.DataFrame, windows: Iterable[int]) -> Dict[str, object]:
         """
@@ -826,11 +939,35 @@ class MovingAverageCrossover(BaseStrategy):
         return df
 
 class RSIStrategy(BaseStrategy):
+    STRATEGY_KEY = "rsi"
+    STRATEGY_NAME = "RSI Strategy"
+    OPTIMIZATION_PARAM_RANGES = {
+        "period": [10, 14, 20, 30],
+        "overbought": [65, 70, 75, 80],
+        "oversold": [20, 25, 30, 35],
+        "risk_reward_ratio": [1.5, 2.0, 2.5, 3.0],
+        "trading_fee": [0.001],
+    }
+    LIVE_PARAMETER_NAMES = (
+        "period",
+        "overbought",
+        "oversold",
+        "risk_reward_ratio",
+        "trading_fee",
+    )
+
     def __init__(self, period: int = 14, overbought: float = 70, oversold: float = 30, risk_reward_ratio: float = 2.0, trading_fee: float = 0.0):
         super().__init__("RSI Strategy", risk_reward_ratio, trading_fee=trading_fee)
         self.period = period
         self.overbought = overbought
         self.oversold = oversold
+
+    @classmethod
+    def validate_parameters(cls, params: Dict[str, Any]) -> bool:
+        period = params.get('period', 0)
+        overbought = params.get('overbought', 70)
+        oversold = params.get('oversold', 30)
+        return period > 0 and overbought > oversold
     
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
         """
@@ -990,9 +1127,27 @@ class RSIStrategy(BaseStrategy):
         return df
 
 class DonchianChannelBreakout(BaseStrategy):
+    STRATEGY_KEY = "donchian"
+    STRATEGY_NAME = "Donchian Channel Breakout"
+    OPTIMIZATION_PARAM_RANGES = {
+        "channel_period": [10, 15, 20, 25, 30],
+        "risk_reward_ratio": [1.5, 2.0, 2.5, 3.0],
+        "trading_fee": [0.001],
+    }
+    LIVE_PARAMETER_NAMES = (
+        "channel_period",
+        "risk_reward_ratio",
+        "trading_fee",
+    )
+
     def __init__(self, channel_period: int = 20, risk_reward_ratio: float = 2.0, trading_fee: float = 0.0):
         super().__init__("Donchian Channel Breakout", risk_reward_ratio, trading_fee=trading_fee)
         self.channel_period = channel_period
+
+    @classmethod
+    def validate_parameters(cls, params: Dict[str, Any]) -> bool:
+        channel_period = params.get('channel_period', 0)
+        return channel_period > 0
 
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
         """
@@ -1117,3 +1272,321 @@ class DonchianChannelBreakout(BaseStrategy):
                 df.loc[df.index[i], 'Stop_Loss'] = self.active_trade.stop_loss
         
         return df 
+
+class BollingerBandMeanReversion(BaseStrategy):
+    STRATEGY_KEY = "bollinger"
+    STRATEGY_NAME = "Bollinger Band Mean Reversion"
+    OPTIMIZATION_PARAM_RANGES = {
+        "period": [10, 15, 20, 25, 30],
+        "std_dev": [1.5, 2.0, 2.5, 3.0],
+        "risk_reward_ratio": [1.5, 2.0, 2.5, 3.0],
+        "trading_fee": [0.001],
+    }
+    LIVE_PARAMETER_NAMES = (
+        "period",
+        "std_dev",
+        "risk_reward_ratio",
+        "trading_fee",
+    )
+
+    def __init__(self, period: int = 20, std_dev: float = 2.0, risk_reward_ratio: float = 2.0, trading_fee: float = 0.0):
+        super().__init__(self.STRATEGY_NAME, risk_reward_ratio, trading_fee=trading_fee)
+        self.period = period
+        self.std_dev = std_dev
+
+    @classmethod
+    def validate_parameters(cls, params: Dict[str, Any]) -> bool:
+        period = params.get("period", 0)
+        std_dev = params.get("std_dev", 0)
+        return period > 0 and std_dev > 0
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        df = data.copy()
+        df["BB_Middle"] = df["Close"].rolling(window=self.period).mean()
+        rolling_std = df["Close"].rolling(window=self.period).std()
+        df["BB_Upper"] = df["BB_Middle"] + (rolling_std * self.std_dev)
+        df["BB_Lower"] = df["BB_Middle"] - (rolling_std * self.std_dev)
+        df["ATR"] = self.calculate_atr(df)
+        df["Signal"] = Signal.HOLD.value
+        df["Position"] = 0
+        df["Take_Profit"] = np.nan
+        df["Stop_Loss"] = np.nan
+
+        current_position = PositionType.NONE
+
+        for i in range(1, len(df)):
+            prev_close = df["Close"].iloc[i - 1]
+            current_price = df["Close"].iloc[i]
+            prev_upper = df["BB_Upper"].iloc[i - 1]
+            prev_lower = df["BB_Lower"].iloc[i - 1]
+            current_upper = df["BB_Upper"].iloc[i]
+            current_lower = df["BB_Lower"].iloc[i]
+            current_atr = df["ATR"].iloc[i]
+
+            if (
+                np.isnan(prev_upper)
+                or np.isnan(prev_lower)
+                or np.isnan(current_upper)
+                or np.isnan(current_lower)
+                or np.isnan(current_atr)
+            ):
+                continue
+
+            if prev_close >= prev_lower and current_price < current_lower and current_position == PositionType.NONE:
+                df.loc[df.index[i], "Signal"] = Signal.LONG_ENTRY.value
+                current_position = PositionType.LONG
+                take_profit, stop_loss = self.calculate_trade_levels(current_price, PositionType.LONG, current_atr)
+                df.loc[df.index[i], "Take_Profit"] = take_profit
+                df.loc[df.index[i], "Stop_Loss"] = stop_loss
+                self.active_trade = Trade(
+                    entry_date=df.index[i],
+                    entry_price=current_price,
+                    position_type=PositionType.LONG,
+                    take_profit=take_profit,
+                    stop_loss=stop_loss,
+                )
+            elif prev_close <= prev_upper and current_price > current_upper and current_position == PositionType.NONE:
+                df.loc[df.index[i], "Signal"] = Signal.SHORT_ENTRY.value
+                current_position = PositionType.SHORT
+                take_profit, stop_loss = self.calculate_trade_levels(current_price, PositionType.SHORT, current_atr)
+                df.loc[df.index[i], "Take_Profit"] = take_profit
+                df.loc[df.index[i], "Stop_Loss"] = stop_loss
+                self.active_trade = Trade(
+                    entry_date=df.index[i],
+                    entry_price=current_price,
+                    position_type=PositionType.SHORT,
+                    take_profit=take_profit,
+                    stop_loss=stop_loss,
+                )
+
+            if self.active_trade:
+                if self.active_trade.position_type == PositionType.LONG:
+                    if current_price >= self.active_trade.take_profit:
+                        df.loc[df.index[i], "Signal"] = Signal.LONG_EXIT.value
+                        self.active_trade.exit_date = df.index[i]
+                        self.active_trade.exit_price = current_price
+                        self.active_trade.pnl = self.calculate_pnl_with_fees(
+                            self.active_trade.entry_price, current_price, PositionType.LONG
+                        )
+                        self.active_trade.status = "tp_hit"
+                        self.trades.append(self.active_trade)
+                        self.active_trade = None
+                        current_position = PositionType.NONE
+                    elif current_price <= self.active_trade.stop_loss:
+                        df.loc[df.index[i], "Signal"] = Signal.LONG_EXIT.value
+                        self.active_trade.exit_date = df.index[i]
+                        self.active_trade.exit_price = current_price
+                        self.active_trade.pnl = self.calculate_pnl_with_fees(
+                            self.active_trade.entry_price, current_price, PositionType.LONG
+                        )
+                        self.active_trade.status = "sl_hit"
+                        self.trades.append(self.active_trade)
+                        self.active_trade = None
+                        current_position = PositionType.NONE
+                else:
+                    if current_price <= self.active_trade.take_profit:
+                        df.loc[df.index[i], "Signal"] = Signal.SHORT_EXIT.value
+                        self.active_trade.exit_date = df.index[i]
+                        self.active_trade.exit_price = current_price
+                        self.active_trade.pnl = self.calculate_pnl_with_fees(
+                            self.active_trade.entry_price, current_price, PositionType.SHORT
+                        )
+                        self.active_trade.status = "tp_hit"
+                        self.trades.append(self.active_trade)
+                        self.active_trade = None
+                        current_position = PositionType.NONE
+                    elif current_price >= self.active_trade.stop_loss:
+                        df.loc[df.index[i], "Signal"] = Signal.SHORT_EXIT.value
+                        self.active_trade.exit_date = df.index[i]
+                        self.active_trade.exit_price = current_price
+                        self.active_trade.pnl = self.calculate_pnl_with_fees(
+                            self.active_trade.entry_price, current_price, PositionType.SHORT
+                        )
+                        self.active_trade.status = "sl_hit"
+                        self.trades.append(self.active_trade)
+                        self.active_trade = None
+                        current_position = PositionType.NONE
+
+            df.loc[df.index[i], "Position"] = current_position.value
+            if self.active_trade:
+                df.loc[df.index[i], "Take_Profit"] = self.active_trade.take_profit
+                df.loc[df.index[i], "Stop_Loss"] = self.active_trade.stop_loss
+
+        return df
+
+    def generate_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        df = data.copy()
+        df["BB_Middle"] = df["Close"].rolling(window=self.period).mean()
+        rolling_std = df["Close"].rolling(window=self.period).std()
+        df["BB_Upper"] = df["BB_Middle"] + (rolling_std * self.std_dev)
+        df["BB_Lower"] = df["BB_Middle"] - (rolling_std * self.std_dev)
+        df["Signal"] = Signal.HOLD.value
+        return df
+
+class MACDTrendStrategy(BaseStrategy):
+    STRATEGY_KEY = "macd"
+    STRATEGY_NAME = "MACD Trend Strategy"
+    OPTIMIZATION_PARAM_RANGES = {
+        "fast_period": [8, 12, 16],
+        "slow_period": [21, 26, 34],
+        "signal_period": [7, 9, 12],
+        "risk_reward_ratio": [1.5, 2.0, 2.5, 3.0],
+        "trading_fee": [0.001],
+    }
+    LIVE_PARAMETER_NAMES = (
+        "fast_period",
+        "slow_period",
+        "signal_period",
+        "risk_reward_ratio",
+        "trading_fee",
+    )
+
+    def __init__(
+        self,
+        fast_period: int = 12,
+        slow_period: int = 26,
+        signal_period: int = 9,
+        risk_reward_ratio: float = 2.0,
+        trading_fee: float = 0.0,
+    ):
+        super().__init__(self.STRATEGY_NAME, risk_reward_ratio, trading_fee=trading_fee)
+        self.fast_period = fast_period
+        self.slow_period = slow_period
+        self.signal_period = signal_period
+
+    @classmethod
+    def validate_parameters(cls, params: Dict[str, Any]) -> bool:
+        fast_period = params.get("fast_period", 0)
+        slow_period = params.get("slow_period", 0)
+        signal_period = params.get("signal_period", 0)
+        return fast_period > 0 and signal_period > 0 and fast_period < slow_period
+
+    def _add_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        df = data.copy()
+        ema_fast = df["Close"].ewm(span=self.fast_period, adjust=False).mean()
+        ema_slow = df["Close"].ewm(span=self.slow_period, adjust=False).mean()
+        df["MACD"] = ema_fast - ema_slow
+        df["MACD_Signal"] = df["MACD"].ewm(span=self.signal_period, adjust=False).mean()
+        df["MACD_Histogram"] = df["MACD"] - df["MACD_Signal"]
+        return df
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        df = self._add_indicators(data)
+        df["ATR"] = self.calculate_atr(df)
+        df["Signal"] = Signal.HOLD.value
+        df["Position"] = 0
+        df["Take_Profit"] = np.nan
+        df["Stop_Loss"] = np.nan
+
+        current_position = PositionType.NONE
+
+        for i in range(1, len(df)):
+            prev_macd = df["MACD"].iloc[i - 1]
+            prev_signal = df["MACD_Signal"].iloc[i - 1]
+            current_macd = df["MACD"].iloc[i]
+            current_signal = df["MACD_Signal"].iloc[i]
+            current_price = df["Close"].iloc[i]
+            current_atr = df["ATR"].iloc[i]
+
+            if np.isnan(prev_macd) or np.isnan(prev_signal) or np.isnan(current_macd) or np.isnan(current_signal) or np.isnan(current_atr):
+                continue
+
+            if prev_macd <= prev_signal and current_macd > current_signal and current_position == PositionType.NONE:
+                df.loc[df.index[i], "Signal"] = Signal.LONG_ENTRY.value
+                current_position = PositionType.LONG
+                take_profit, stop_loss = self.calculate_trade_levels(current_price, PositionType.LONG, current_atr)
+                df.loc[df.index[i], "Take_Profit"] = take_profit
+                df.loc[df.index[i], "Stop_Loss"] = stop_loss
+                self.active_trade = Trade(
+                    entry_date=df.index[i],
+                    entry_price=current_price,
+                    position_type=PositionType.LONG,
+                    take_profit=take_profit,
+                    stop_loss=stop_loss,
+                )
+            elif prev_macd >= prev_signal and current_macd < current_signal and current_position == PositionType.NONE:
+                df.loc[df.index[i], "Signal"] = Signal.SHORT_ENTRY.value
+                current_position = PositionType.SHORT
+                take_profit, stop_loss = self.calculate_trade_levels(current_price, PositionType.SHORT, current_atr)
+                df.loc[df.index[i], "Take_Profit"] = take_profit
+                df.loc[df.index[i], "Stop_Loss"] = stop_loss
+                self.active_trade = Trade(
+                    entry_date=df.index[i],
+                    entry_price=current_price,
+                    position_type=PositionType.SHORT,
+                    take_profit=take_profit,
+                    stop_loss=stop_loss,
+                )
+
+            if self.active_trade:
+                if self.active_trade.position_type == PositionType.LONG:
+                    if current_price >= self.active_trade.take_profit:
+                        df.loc[df.index[i], "Signal"] = Signal.LONG_EXIT.value
+                        self.active_trade.exit_date = df.index[i]
+                        self.active_trade.exit_price = current_price
+                        self.active_trade.pnl = self.calculate_pnl_with_fees(
+                            self.active_trade.entry_price, current_price, PositionType.LONG
+                        )
+                        self.active_trade.status = "tp_hit"
+                        self.trades.append(self.active_trade)
+                        self.active_trade = None
+                        current_position = PositionType.NONE
+                    elif current_price <= self.active_trade.stop_loss:
+                        df.loc[df.index[i], "Signal"] = Signal.LONG_EXIT.value
+                        self.active_trade.exit_date = df.index[i]
+                        self.active_trade.exit_price = current_price
+                        self.active_trade.pnl = self.calculate_pnl_with_fees(
+                            self.active_trade.entry_price, current_price, PositionType.LONG
+                        )
+                        self.active_trade.status = "sl_hit"
+                        self.trades.append(self.active_trade)
+                        self.active_trade = None
+                        current_position = PositionType.NONE
+                else:
+                    if current_price <= self.active_trade.take_profit:
+                        df.loc[df.index[i], "Signal"] = Signal.SHORT_EXIT.value
+                        self.active_trade.exit_date = df.index[i]
+                        self.active_trade.exit_price = current_price
+                        self.active_trade.pnl = self.calculate_pnl_with_fees(
+                            self.active_trade.entry_price, current_price, PositionType.SHORT
+                        )
+                        self.active_trade.status = "tp_hit"
+                        self.trades.append(self.active_trade)
+                        self.active_trade = None
+                        current_position = PositionType.NONE
+                    elif current_price >= self.active_trade.stop_loss:
+                        df.loc[df.index[i], "Signal"] = Signal.SHORT_EXIT.value
+                        self.active_trade.exit_date = df.index[i]
+                        self.active_trade.exit_price = current_price
+                        self.active_trade.pnl = self.calculate_pnl_with_fees(
+                            self.active_trade.entry_price, current_price, PositionType.SHORT
+                        )
+                        self.active_trade.status = "sl_hit"
+                        self.trades.append(self.active_trade)
+                        self.active_trade = None
+                        current_position = PositionType.NONE
+
+            df.loc[df.index[i], "Position"] = current_position.value
+            if self.active_trade:
+                df.loc[df.index[i], "Take_Profit"] = self.active_trade.take_profit
+                df.loc[df.index[i], "Stop_Loss"] = self.active_trade.stop_loss
+
+        return df
+
+    def generate_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        df = self._add_indicators(data)
+        df["Signal"] = Signal.HOLD.value
+        return df
+
+STRATEGY_CLASSES = (
+    MovingAverageCrossover,
+    RSIStrategy,
+    DonchianChannelBreakout,
+    BollingerBandMeanReversion,
+    MACDTrendStrategy,
+)
+
+STRATEGY_DEFINITIONS = {
+    strategy_class.STRATEGY_KEY: strategy_class.get_definition()
+    for strategy_class in STRATEGY_CLASSES
+}

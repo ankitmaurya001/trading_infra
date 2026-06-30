@@ -25,7 +25,8 @@ class StrategyOptimizer:
                  optimization_metric: str = "composite_score",
                  min_trades: int = 10,
                  max_drawdown_threshold: float = 0.5,
-                 sharpe_threshold: float = 0.5):
+                 sharpe_threshold: float = 0.5,
+                 run_robustness_analysis: bool = True):
         """
         Initialize the strategy optimizer.
         
@@ -45,6 +46,7 @@ class StrategyOptimizer:
         self.min_trades = min_trades
         self.max_drawdown_threshold = max_drawdown_threshold
         self.sharpe_threshold = sharpe_threshold
+        self.run_robustness_analysis = run_robustness_analysis
         self.results = []
         self.failed_runs = []  # Track failed configurations for debugging
         self._ma_indicator_cache = None
@@ -123,17 +125,10 @@ class StrategyOptimizer:
         Returns:
             bool: True if parameters are valid
         """
-        # Example validations for different strategies
-        if self.strategy_class == MovingAverageCrossover:
-            short_window = params.get('short_window', 0)
-            long_window = params.get('long_window', 0)
-            return short_window < long_window
-        
-        elif self.strategy_class == RSIStrategy:
-            overbought = params.get('overbought', 70)
-            oversold = params.get('oversold', 30)
-            return overbought > oversold
-        
+        validator = getattr(self.strategy_class, "validate_parameters", None)
+        if validator is not None:
+            return bool(validator(params))
+
         return True
     
     def _reset_strategy_state(self, strategy: BaseStrategy) -> None:
@@ -285,7 +280,7 @@ class StrategyOptimizer:
         logger.info(f"Failed runs: {len(self.failed_runs)}")
         
         # Calculate local sensitivity analysis and add robustness info to best_metrics
-        if len(self.results) >= 5:
+        if self.run_robustness_analysis and len(self.results) >= 5:
             try:
                 # Get top 5 results for robustness analysis
                 top_results = self.get_top_results(5)

@@ -11,7 +11,12 @@ from datetime import datetime
 import logging
 
 from data_fetcher import DataFetcher
-from strategies import MovingAverageCrossover, RSIStrategy, DonchianChannelBreakout
+from strategies import (
+    DonchianChannelBreakout,
+    MovingAverageCrossover,
+    RSIStrategy,
+    STRATEGY_DEFINITIONS,
+)
 from strategy_optimizer import (
     optimize_moving_average_crossover,
     optimize_rsi_strategy,
@@ -36,6 +41,7 @@ class StrategyManager:
         self.optimization_results = {}
         self.strategies = []
         self.data_fetcher = DataFetcher()
+        self.strategy_definitions = STRATEGY_DEFINITIONS
         
         # Default parameter ranges for optimization
         self.default_param_ranges = {
@@ -239,30 +245,12 @@ class StrategyManager:
             params = self.optimized_params[strategy_name]
             
             try:
-                if strategy_name == 'ma':
-                    strategy = MovingAverageCrossover(
-                        short_window=params['short_window'],
-                        long_window=params['long_window'],
-                        risk_reward_ratio=params['risk_reward_ratio'],
-                        trading_fee=params['trading_fee']
-                    )
-                elif strategy_name == 'rsi':
-                    strategy = RSIStrategy(
-                        period=params['period'],
-                        overbought=params['overbought'],
-                        oversold=params['oversold'],
-                        risk_reward_ratio=params['risk_reward_ratio'],
-                        trading_fee=params['trading_fee']
-                    )
-                elif strategy_name == 'donchian':
-                    strategy = DonchianChannelBreakout(
-                        channel_period=params['channel_period'],
-                        risk_reward_ratio=params['risk_reward_ratio'],
-                        trading_fee=params['trading_fee']
-                    )
-                else:
+                definition = self.strategy_definitions.get(strategy_name)
+                if definition is None:
                     print(f"⚠️  Unknown strategy: {strategy_name}, skipping...")
                     continue
+
+                strategy = definition.create_strategy(params)
                 
                 self.strategies.append(strategy)
                 print(f"✅ Initialized {strategy_name}: {strategy.name}")
@@ -412,9 +400,8 @@ class StrategyManager:
         """
         # Map short names to full strategy names
         name_mapping = {
-            'ma': 'Moving Average Crossover',
-            'rsi': 'RSI Strategy',
-            'donchian': 'Donchian Channel Breakout'
+            key: definition.name
+            for key, definition in self.strategy_definitions.items()
         }
         
         # Try to get full name from mapping, otherwise use as-is
@@ -424,12 +411,10 @@ class StrategyManager:
         for strategy in self.strategies:
             if strategy.name == full_name or strategy.name == strategy_name:
                 return strategy
-            # Also check if the short name matches
-            if strategy_name.lower() in ['ma', 'rsi', 'donchian']:
-                if (strategy_name.lower() == 'ma' and 'Moving Average' in strategy.name) or \
-                   (strategy_name.lower() == 'rsi' and 'RSI' in strategy.name) or \
-                   (strategy_name.lower() == 'donchian' and 'Donchian' in strategy.name):
-                    return strategy
+            # Also check if the short name maps to this registered strategy.
+            definition = self.strategy_definitions.get(strategy_name.lower())
+            if definition is not None and strategy.name == definition.name:
+                return strategy
         
         return None
     
@@ -461,23 +446,10 @@ class StrategyManager:
             True if parameters are valid
         """
         try:
-            if strategy_name == 'ma':
-                required_params = ['short_window', 'long_window', 'risk_reward_ratio', 'trading_fee']
-                if not all(param in params for param in required_params):
-                    return False
-                if params['short_window'] >= params['long_window']:
-                    return False
-            elif strategy_name == 'rsi':
-                required_params = ['period', 'overbought', 'oversold', 'risk_reward_ratio', 'trading_fee']
-                if not all(param in params for param in required_params):
-                    return False
-                if params['oversold'] >= params['overbought']:
-                    return False
-            elif strategy_name == 'donchian':
-                required_params = ['channel_period', 'risk_reward_ratio', 'trading_fee']
-                if not all(param in params for param in required_params):
-                    return False
-            
-            return True
+            definition = self.strategy_definitions.get(strategy_name)
+            if definition is None:
+                return False
+
+            return definition.validate_parameters(params)
         except Exception:
             return False
