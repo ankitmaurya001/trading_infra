@@ -30,10 +30,12 @@ class DataBrokerStub:
         available_margin: float = 1000.0,
         lot_margin: float = 200.0,
         lot_size: int = 10,
+        fill_prices=None,
     ):
         self.available_margin = available_margin
         self.lot_margin = lot_margin
         self.lot_size = lot_size
+        self.fill_prices = list(fill_prices or [])
         self.margin_queries = []
         self.placed_orders = []
         self.placed_gtts = []
@@ -65,7 +67,10 @@ class DataBrokerStub:
             "price": price,
         }
         self.placed_orders.append(payload)
-        return {"order_id": order_id}
+        response = {"order_id": order_id}
+        if self.fill_prices:
+            response["average_price"] = self.fill_prices.pop(0)
+        return response
 
     def place_gtt_order(
         self, symbol, trigger_price, last_price, transaction_type, quantity, order_price
@@ -246,3 +251,47 @@ def test_configured_commodity_lots_propagate_to_margin_orders_and_pnl():
     assert len(closed) == 1
     assert broker.placed_orders[-1]["quantity"] == 3
     assert closed[0]["pnl"] == pytest.approx(0.5)
+
+
+def test_kite_fill_slippage_is_logged_for_configured_lots():
+    engine = TradingEngine(
+        initial_balance=1000.0, max_leverage=2.0, max_loss_percent=1.0
+    )
+    engine.symbol = "NATGASMINI26FEBFUT"
+    engine.commodity_trade_lots = 2
+    broker = DataBrokerStub(
+        available_margin=1000.0,
+        lot_margin=600.0,
+        lot_size=10,
+        fill_prices=[100.5, 109.0],
+    )
+    engine.broker = broker
+    engine.use_broker = True
+    strategy = DummyStrategy()
+    ts = datetime(2024, 1, 1, 9, 15)
+
+    trade = engine.execute_trade(strategy, "BUY", 100.0, ts, _sample_ohlc())
+
+    assert trade["entry_reference_price"] == 100.0
+    assert trade["entry_fill_price"] == 100.5
+    assert trade["entry_slippage_per_unit"] == pytest.approx(0.5)
+    assert trade["entry_slippage_rupees"] == pytest.approx(10.0)
+
+    _append_closed_strategy_trade(
+        strategy, status="tp_hit", entry_price=100.5, exit_price=109.0, ts=ts
+    )
+    closed = engine.close_trades(
+        strategy=strategy,
+        position_type="LONG",
+        price=110.0,
+        timestamp=datetime(2024, 1, 1, 9, 30),
+        exit_type="tp_hit",
+    )
+
+    assert len(closed) == 1
+    closed_trade = closed[0]
+    assert closed_trade["exit_reference_price"] == 110.0
+    assert closed_trade["exit_fill_price"] == 109.0
+    assert closed_trade["exit_slippage_per_unit"] == pytest.approx(1.0)
+    assert closed_trade["exit_slippage_rupees"] == pytest.approx(20.0)
+    assert closed_trade["pnl"] == pytest.approx(((109.0 - 100.5) * 10 * 2) / 600.0)

@@ -231,6 +231,39 @@ class TradingDashboard:
     def get_market_data_df(self) -> pd.DataFrame:
         """Get market data as DataFrame."""
         return self.market_data_df
+
+    def get_configured_lots_display(self) -> str:
+        """Return the configured Kite lot count for display."""
+        status_lots = self.status_data.get('num_lots')
+        if status_lots is not None and not pd.isna(status_lots):
+            return f"{int(status_lots)}"
+
+        active_info = self.status_data.get('active_trade_info') or {}
+        if active_info.get('lot_size') and active_info.get('quantity') is not None:
+            return f"{int(active_info['quantity'])}"
+
+        if not self.trade_history_df.empty and {'quantity', 'lot_size'}.issubset(self.trade_history_df.columns):
+            sized_trades = self.trade_history_df[
+                self.trade_history_df['lot_size'].notna()
+                & self.trade_history_df['quantity'].notna()
+                & self.trade_history_df['action'].isin(['BUY', 'SELL'])
+            ]
+            if not sized_trades.empty:
+                return f"{int(sized_trades.iloc[-1]['quantity'])}"
+
+        config_path = "trading_config_kite.json"
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                commodity_config = config.get('commodity_trading', {})
+                config_lots = commodity_config.get('num_lots', config.get('num_lots'))
+                if config_lots is not None:
+                    return f"{int(config_lots)}"
+            except Exception:
+                pass
+
+        return "N/A"
     
     def process_trade_data(self) -> pd.DataFrame:
         """
@@ -266,6 +299,11 @@ class TradingDashboard:
                     'leverage': rejected_record.get('leverage', 0.0),
                     'position_size': rejected_record.get('position_size', 0.0),
                     'margin_used': rejected_record.get('margin_used', None),
+                    'entry_slippage_rupees': rejected_record.get('slippage_rupees', 0.0),
+                    'entry_slippage_bps': rejected_record.get('slippage_bps', 0.0),
+                    'exit_slippage_rupees': 0.0,
+                    'exit_slippage_bps': 0.0,
+                    'total_slippage_rupees': rejected_record.get('slippage_rupees', 0.0),
                     'atr': rejected_record.get('atr', 0.0),
                     'exit_time': None,  # No exit for rejected trades
                     'exit_price': None,
@@ -312,6 +350,11 @@ class TradingDashboard:
                 'leverage': entry_record.get('effective_leverage', entry_record.get('leverage', 1.0)),
                 'position_size': entry_record.get('position_size', entry_record['quantity'] * entry_record['price']),
                 'margin_used': entry_record.get('margin_used', None),
+                'entry_slippage_rupees': entry_record.get('slippage_rupees', 0.0),
+                'entry_slippage_bps': entry_record.get('slippage_bps', 0.0),
+                'exit_slippage_rupees': exit_record.get('slippage_rupees', 0.0),
+                'exit_slippage_bps': exit_record.get('slippage_bps', 0.0),
+                'total_slippage_rupees': entry_record.get('slippage_rupees', 0.0) + exit_record.get('slippage_rupees', 0.0),
                 'atr': entry_record.get('atr', 0.0),
                 'exit_time': exit_record['timestamp'],
                 'exit_price': exit_record['price'],
@@ -740,6 +783,14 @@ class TradingDashboard:
             # Display completed trades
             if not completed_trades.empty:
                 st.markdown("### ✅ Completed Trades")
+                if 'total_slippage_rupees' in completed_trades.columns:
+                    slip_cols = st.columns(3)
+                    total_slip = pd.to_numeric(completed_trades['total_slippage_rupees'], errors='coerce').fillna(0).sum()
+                    avg_entry_bps = pd.to_numeric(completed_trades.get('entry_slippage_bps', pd.Series(dtype=float)), errors='coerce').mean()
+                    avg_exit_bps = pd.to_numeric(completed_trades.get('exit_slippage_bps', pd.Series(dtype=float)), errors='coerce').mean()
+                    slip_cols[0].metric("Total Slippage", f"₹{total_slip:,.2f}")
+                    slip_cols[1].metric("Avg Entry Slip", f"{avg_entry_bps:.2f} bps" if pd.notna(avg_entry_bps) else "N/A")
+                    slip_cols[2].metric("Avg Exit Slip", f"{avg_exit_bps:.2f} bps" if pd.notna(avg_exit_bps) else "N/A")
                 
                 # Create a display-friendly version
                 display_df = completed_trades.copy()
@@ -777,6 +828,7 @@ class TradingDashboard:
                     'trade_id', 'direction', 'strategy', 'entry_time', 'exit_time',
                     'entry_price', 'exit_price', 'price_change', 'price_change_pct',
                     'quantity', 'lot_size', 'contract_units', 'leverage', 'margin_used',
+                    'entry_slippage_bps', 'exit_slippage_bps', 'total_slippage_rupees',
                     'atr', 'pnl', 'pnl_pct', 'exit_status'
                 ]
                 
@@ -787,6 +839,7 @@ class TradingDashboard:
                     'Trade ID', 'Direction', 'Strategy', 'Entry Time', 'Exit Time',
                     'Entry Price', 'Exit Price', 'Price Change', 'Price Change %',
                     'Lots / Qty', 'Lot Size', 'Contract Units', 'Leverage', 'Margin Used',
+                    'Entry Slip bps', 'Exit Slip bps', 'Total Slip ₹',
                     'ATR', 'PnL', 'PnL %', 'Exit Status'
                 ]
                 
@@ -1132,7 +1185,7 @@ def main():
     
     # Session info with expandable details
     print(f"📊 Rendering session info metrics...")
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.metric("Symbol", selected_session['symbol'])
     with col2:
@@ -1155,6 +1208,12 @@ def main():
             st.metric("Mode", f"❓ {exec_mode}")
     with col4:
         st.metric("Session ID", selected_session['session_id'][:8] + "...")
+    with col5:
+        exec_mode = selected_session.get('execution_mode', 'unknown')
+        if exec_mode in ['kite_live', 'kite_virtual']:
+            st.metric("Planned Lots", dashboard.get_configured_lots_display())
+        else:
+            st.metric("Planned Lots", "N/A")
     
     # Expandable session details
     with st.expander("📋 Session Details", expanded=False):

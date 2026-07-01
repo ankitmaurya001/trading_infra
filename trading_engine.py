@@ -100,6 +100,7 @@ class TradingEngine:
         trade_log_df = pd.DataFrame(columns=[
             'timestamp', 'symbol', 'strategy', 'action', 'price', 'quantity', 
             'lot_size', 'leverage', 'effective_leverage', 'position_size', 'margin_used',
+            'reference_price', 'fill_price', 'slippage_per_unit', 'slippage_bps', 'slippage_rupees',
             'atr', 'balance', 'pnl', 'trade_id', 'status', 'reject_reason'
         ])
         trade_log_df.to_csv(self.trade_log_file, index=False)
@@ -132,6 +133,72 @@ class TradingEngine:
         except (TypeError, ValueError):
             lots = 1
         return max(lots, 1)
+
+    def _get_order_fill_price(self, order_response: Optional[Dict]) -> Optional[float]:
+        """Extract an average fill price from a broker order response."""
+        if not isinstance(order_response, dict):
+            return None
+        for key in ('average_price', 'avg_price', 'fill_price', 'price'):
+            value = order_response.get(key)
+            if value not in (None, ''):
+                try:
+                    value = float(value)
+                    return value if value > 0 else None
+                except (TypeError, ValueError):
+                    continue
+        return None
+
+    def _contract_units_for_trade(self, trade: Dict) -> float:
+        """Return price-multiplied units for PnL/slippage calculations."""
+        quantity = trade.get('quantity', 0) or 0
+        lot_size = trade.get('lot_size')
+        try:
+            quantity = float(quantity)
+            lot_size = float(lot_size) if lot_size not in (None, '') else None
+        except (TypeError, ValueError):
+            return 0.0
+        return quantity * lot_size if lot_size and lot_size > 0 else quantity
+
+    def _calculate_slippage(
+        self,
+        side: str,
+        reference_price: float,
+        fill_price: Optional[float],
+        contract_units: float,
+    ) -> Dict[str, float]:
+        """
+        Calculate adverse slippage.
+
+        BUY: fill above reference is positive/bad.
+        SELL: fill below reference is positive/bad.
+        Negative values are favorable price improvement.
+        """
+        if fill_price is None or reference_price is None or pd.isna(reference_price):
+            fill_price = reference_price
+        try:
+            reference_price = float(reference_price)
+            fill_price = float(fill_price)
+            contract_units = float(contract_units or 0)
+        except (TypeError, ValueError):
+            return {
+                'reference_price': reference_price,
+                'fill_price': fill_price,
+                'slippage_per_unit': 0.0,
+                'slippage_bps': 0.0,
+                'slippage_rupees': 0.0,
+            }
+        if side.upper() == 'BUY':
+            slippage_per_unit = fill_price - reference_price
+        else:
+            slippage_per_unit = reference_price - fill_price
+        slippage_bps = (slippage_per_unit / reference_price * 10000) if reference_price else 0.0
+        return {
+            'reference_price': reference_price,
+            'fill_price': fill_price,
+            'slippage_per_unit': slippage_per_unit,
+            'slippage_bps': slippage_bps,
+            'slippage_rupees': slippage_per_unit * contract_units,
+        }
 
     def _reset_daily_counters_if_needed(self, current_time: datetime):
         day = current_time.date()
@@ -571,12 +638,24 @@ class TradingEngine:
             # Check if it's a GTT order
             gtt_id = stop_loss_order.get('gtt_id') or stop_loss_order.get('trigger_id')
             stop_loss_order_id = stop_loss_order.get('orderId') or stop_loss_order.get('order_id') or gtt_id
+
+        entry_reference_price = price
+        entry_fill_price = self._get_order_fill_price(broker_order) or entry_reference_price
+        if (is_kite_broker or is_mcx_commodity) and lot_size:
+            position_size = entry_fill_price * lot_size * quantity
+        entry_slippage = self._calculate_slippage(
+            side=action,
+            reference_price=entry_reference_price,
+            fill_price=entry_fill_price,
+            contract_units=(lot_size * quantity if lot_size else quantity),
+        )
         
         trade = {
             'id': len(self.trade_history) + 1,
             'strategy': strategy.name,
             'action': action, # BUY, SELL, EXIT
-            'entry_price': price,
+            'entry_price': entry_fill_price,
+            'entry_reference_price': entry_reference_price,
             'entry_time': timestamp,
             'quantity': quantity,
             'leverage': leverage,
@@ -589,7 +668,11 @@ class TradingEngine:
             'broker_order_id': broker_order_id,
             'stop_loss_order_id': stop_loss_order_id,
             'gtt_id': gtt_id,  # Store GTT ID separately for Kite broker
-            'lot_size': lot_size  # Store lot_size for commodity futures (needed for correct PnL calculation)
+            'lot_size': lot_size,  # Store lot_size for commodity futures (needed for correct PnL calculation)
+            'entry_fill_price': entry_fill_price,
+            'entry_slippage_per_unit': entry_slippage['slippage_per_unit'],
+            'entry_slippage_bps': entry_slippage['slippage_bps'],
+            'entry_slippage_rupees': entry_slippage['slippage_rupees'],
         }
         
         # Debug: Print lot_size storage
@@ -624,7 +707,7 @@ class TradingEngine:
         self.trade_history.append(trade)
         
         # Log trade
-        self._log_trade(trade, price, timestamp)
+        self._log_trade(trade, entry_fill_price, timestamp)
         
         # Print trade execution log
         print(f"🔄 [{timestamp.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - {action} {quantity:.4f} {self.symbol} @ ${price:.2f}")
@@ -712,6 +795,8 @@ class TradingEngine:
                     
                     # Handle broker position closure
                     broker_exit_order = None
+                    exit_reference_price = price
+                    exit_order_side = 'SELL' if trade['action'] == 'BUY' else 'BUY'
                     if self.broker and self.use_broker and trade.get('broker_order_id'):
                         # Determine exit status - use provided exit_type or try to detect from strategy
                         exit_status = exit_type
@@ -763,11 +848,10 @@ class TradingEngine:
                             # Take-profit hit, engine-managed stop-loss, manual exit, or any other exit
                             # → place a MARKET order to close the position.
                             try:
-                                exit_side = 'SELL' if trade['action'] == 'BUY' else 'BUY'
                                 exit_quantity = trade['quantity']
                                 broker_exit_order = self.broker.place_order(
                                     symbol=self.symbol,
-                                    side=exit_side,
+                                    side=exit_order_side,
                                     order_type='MARKET',
                                     quantity=exit_quantity
                                 )
@@ -777,8 +861,34 @@ class TradingEngine:
                                 print(f"[Broker] Exit order failed, using virtual close: {e}")
                                 broker_exit_order = None
 
+                    exit_fill_price = self._get_order_fill_price(broker_exit_order) or exit_reference_price
+                    if exit_fill_price != exit_reference_price:
+                        if lot_size_for_pnl and lot_size_for_pnl > 0:
+                            if trade['action'] == 'BUY':
+                                dollar_pnl = (exit_fill_price - trade['entry_price']) * lot_size_for_pnl * quantity_for_pnl
+                            else:
+                                dollar_pnl = (trade['entry_price'] - exit_fill_price) * lot_size_for_pnl * quantity_for_pnl
+                        else:
+                            if trade['action'] == 'BUY':
+                                dollar_pnl = (exit_fill_price - trade['entry_price']) * quantity_for_pnl
+                            else:
+                                dollar_pnl = (trade['entry_price'] - exit_fill_price) * quantity_for_pnl
+                        pnl = dollar_pnl / margin_used if margin_used > 0 else 0
+
+                    exit_slippage = self._calculate_slippage(
+                        side=exit_order_side,
+                        reference_price=exit_reference_price,
+                        fill_price=exit_fill_price,
+                        contract_units=self._contract_units_for_trade(trade),
+                    )
+
                     # Update trade
-                    trade['exit_price'] = price
+                    trade['exit_price'] = exit_fill_price
+                    trade['exit_reference_price'] = exit_reference_price
+                    trade['exit_fill_price'] = exit_fill_price
+                    trade['exit_slippage_per_unit'] = exit_slippage['slippage_per_unit']
+                    trade['exit_slippage_bps'] = exit_slippage['slippage_bps']
+                    trade['exit_slippage_rupees'] = exit_slippage['slippage_rupees']
                     trade['exit_time'] = timestamp
                     trade['pnl'] = pnl
                     trade['broker_exit_order_id'] = broker_exit_order.get('orderId') if isinstance(broker_exit_order, dict) else None
@@ -809,7 +919,7 @@ class TradingEngine:
                     closed_trades.append(trade)
                     
                     # Log trade closure
-                    self._log_trade(trade, price, timestamp, is_exit=True)
+                    self._log_trade(trade, exit_fill_price, timestamp, is_exit=True)
                     
                     # Print trade closure log
                     print(f"✅ [{timestamp.strftime('%Y-%m-%d %H:%M:%S')}] {strategy.name} - CLOSED {trade['action']} position")
@@ -1153,6 +1263,7 @@ class TradingEngine:
             is_exit: Whether this is an exit trade
         """
         if self.trade_log_file:
+            prefix = 'exit' if is_exit else 'entry'
             # Convert timestamp to IST timezone to match decision logs
             ist = pytz.timezone('Asia/Kolkata')
             if timestamp.tzinfo is None:
@@ -1174,6 +1285,11 @@ class TradingEngine:
                 'effective_leverage': trade.get('effective_leverage', trade.get('leverage', 1.0)),
                 'position_size': trade.get('position_size', trade['quantity'] * price),
                 'margin_used': trade.get('margin_used'),
+                'reference_price': trade.get(f'{prefix}_reference_price', price),
+                'fill_price': trade.get(f'{prefix}_fill_price', price),
+                'slippage_per_unit': trade.get(f'{prefix}_slippage_per_unit', 0.0),
+                'slippage_bps': trade.get(f'{prefix}_slippage_bps', 0.0),
+                'slippage_rupees': trade.get(f'{prefix}_slippage_rupees', 0.0),
                 'atr': trade.get('atr', 0.0),
                 'balance': self.current_balance,
                 'pnl': trade.get('pnl', 0),

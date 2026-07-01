@@ -1410,6 +1410,8 @@ class KiteTradingEngine:
             status['symbol'] = self.symbol
             status['interval'] = self.interval
             status['live_trading'] = self.live_trading
+            status['num_lots'] = self.num_lots
+            status['quantity_label'] = 'lots'
             
             # Save to status file in session folder
             status_file = os.path.join(self.session_folder, "status.json")

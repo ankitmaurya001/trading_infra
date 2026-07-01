@@ -48,6 +48,9 @@ TRADE_REQUIRED_COLUMNS = [
     "leverage",
     "position_size",
     "margin_used",
+    "slippage_per_unit",
+    "slippage_bps",
+    "slippage_rupees",
     "atr",
     "balance",
     "pnl",
@@ -154,7 +157,10 @@ def _coerce_trade_frame(df: pd.DataFrame, session: SessionFiles) -> pd.DataFrame
     df["source_format"] = "kite_tradebook" if is_kite_tradebook else "live_session"
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
 
-    numeric_columns = ["price", "quantity", "lot_size", "leverage", "position_size", "margin_used", "atr", "balance", "pnl"]
+    numeric_columns = [
+        "price", "quantity", "lot_size", "leverage", "position_size", "margin_used",
+        "slippage_per_unit", "slippage_bps", "slippage_rupees", "atr", "balance", "pnl"
+    ]
     for column in numeric_columns:
         df[column] = pd.to_numeric(df[column], errors="coerce")
 
@@ -501,6 +507,13 @@ def build_closed_trades(
                 "leverage": _safe_float(entry.get("leverage"), np.nan),
                 "position_size": _safe_float(entry.get("position_size"), np.nan),
                 "margin_used": _safe_float(entry.get("margin_used"), np.nan),
+                "entry_slippage_per_unit": _safe_float(entry.get("slippage_per_unit"), 0.0),
+                "entry_slippage_bps": _safe_float(entry.get("slippage_bps"), 0.0),
+                "entry_slippage_rupees": _safe_float(entry.get("slippage_rupees"), 0.0),
+                "exit_slippage_per_unit": _safe_float(exit_row.get("slippage_per_unit"), 0.0),
+                "exit_slippage_bps": _safe_float(exit_row.get("slippage_bps"), 0.0),
+                "exit_slippage_rupees": _safe_float(exit_row.get("slippage_rupees"), 0.0),
+                "total_slippage_rupees": _safe_float(entry.get("slippage_rupees"), 0.0) + _safe_float(exit_row.get("slippage_rupees"), 0.0),
                 "atr": atr,
                 "price_move": price_move,
                 "price_move_pct": price_move_pct,

@@ -477,18 +477,47 @@ class KiteCommodityBroker:
             
             # Place the order
             order_id = self.kite.place_order(**order_params)
+            fill_details = self._get_order_fill_details(order_id)
             
             logger.info(f"Order placed: {order_id} - {side} {quantity} lots of {symbol} @ {price if price else 'MARKET'}")
             
             return {
                 'orderId': str(order_id),
                 'order_id': str(order_id),
-                'status': 'placed'
+                'status': fill_details.get('status', 'placed'),
+                'average_price': fill_details.get('average_price'),
+                'filled_quantity': fill_details.get('filled_quantity'),
+                'raw_order': fill_details.get('raw_order')
             }
             
         except Exception as e:
             logger.error(f"Error placing order: {e}")
             raise
+
+    def _get_order_fill_details(self, order_id: str) -> Dict[str, Any]:
+        """
+        Best-effort lookup of the latest order state after placement.
+
+        Kite market orders are often filled immediately, but the order placement
+        response itself only contains the order id. This gives downstream code an
+        average fill price when the broker has it available.
+        """
+        try:
+            history = self.kite.order_history(order_id)
+            if not history:
+                return {}
+            latest = history[-1]
+            average_price = latest.get('average_price') or latest.get('price')
+            filled_quantity = latest.get('filled_quantity') or latest.get('quantity')
+            return {
+                'status': latest.get('status', 'placed'),
+                'average_price': float(average_price) if average_price not in (None, '') else None,
+                'filled_quantity': int(filled_quantity) if filled_quantity not in (None, '') else None,
+                'raw_order': latest,
+            }
+        except Exception as e:
+            logger.debug(f"Could not fetch fill details for order {order_id}: {e}")
+            return {}
     
     def place_gtt_order(
         self,
